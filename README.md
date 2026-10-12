@@ -3,6 +3,11 @@
 A fork of [Project OpenAN](https://github.com/project-openan), assembled as the
 baseline for the **OpenAN Energy-Saving Function** (LLD US202610010001 v10.2).
 
+## Documentation
+
+- [Requirements](docs/requirements.md): functional and non-functional requirements traced to the LLD, open items, and findings from the upstream code.
+- [Development backlog](docs/development-backlog.md): milestones, work items, blockers, and proposed upstream changes.
+
 ## Upstream repositories
 
 Each repository the LLD's verified baseline (§2) relies on is imported under
