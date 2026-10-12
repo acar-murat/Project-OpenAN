@@ -1,0 +1,28 @@
+server:
+  port: 26337
+  ssl:
+    # Public demo certificate only. Its private key and password are intentionally known;
+    # replace both before any shared, test, staging, or production deployment.
+    enabled: true
+    key-store: classpath:a2a-server-keystore.p12
+    key-store-password: changeit
+    key-store-type: PKCS12
+
+spring:
+  main:
+    banner-mode: off
+
+a2at:
+  server:
+    enabled: true
+    agent-card: classpath:agentcard/transport_workbench_agent.json
+    path-prefix: /a2a/json
+
+a2a:
+  orch-url: https://127.0.0.1:5001
+  ssl-verify: ${A2A_SSL_VERIFY:false}
+  task-cleanup-enabled: ${A2A_TASK_CLEANUP_ENABLED:true}
+  task-cleanup-fail-fast: ${A2A_TASK_CLEANUP_FAIL_FAST:true}
+  task-cleanup-page-size: ${A2A_TASK_CLEANUP_PAGE_SIZE:100}
+  task-cleanup-max-tasks: ${A2A_TASK_CLEANUP_MAX_TASKS:1000}
+  notification-ack-timeout-seconds: ${A2A_NOTIFICATION_ACK_TIMEOUT_SECONDS:300}

@@ -1,0 +1,173 @@
+name: Release to Maven Central
+
+# Publishes workflow-engine and spring-boot-starter to Maven Central.
+# Trigger: push a version tag whose commit is on the protected main branch:
+#   git tag v0.1.0 && git push origin v0.1.0
+# Tags on other branches are rejected. workflow_dispatch runs everything except the
+# tag-gated steps, providing a real dry run without requiring secrets.
+#
+# One-time setup (required before the first release can succeed):
+#   1. Central Portal account: https://central.sonatype.com (register, then generate a
+#      User Token under Account settings — this is the MAVEN_CENTRAL_USERNAME/PASSWORD pair).
+#   2. Namespace `net.openan`: already owned by the Central Portal account that
+#      publishes the a2a-t-sdk artifacts (same user token), so no extra namespace
+#      claim is needed. Migrating to `dev.openan` is a future change once the
+#      openan.dev domain is verified.
+#   3. GPG signing key: generate one (RSA 4096, no expiry or far expiry), publish the
+#      public key to a keyserver (e.g. https://keyserver.ubuntu.com). The Portal
+#      validates artifact signatures against keyservers.
+#   4. Repository secrets (Settings -> Secrets and variables -> Actions):
+#        MAVEN_CENTRAL_USERNAME  Portal user token id
+#        MAVEN_CENTRAL_PASSWORD  Portal user token password
+#        GPG_KEY_CONTENTS        private key, ASCII-armored full text
+#        SIGNING_KEY_ID          key id (last 8 hex chars is enough)
+#        SIGNING_PASSWORD        private key passphrase
+#
+# Publishing scope: the parent pom, workflow-engine and spring-boot-starter are deployed.
+# The parent must ship: module poms take their groupId from it, and Central rejects a
+# bundle whose module coordinates cannot be resolved. samples is excluded from deployment
+# via maven.deploy.skip, but the release gate still builds and tests the full main reactor
+# (main has no vendor-jar dependency; vendor-specific adapters remain outside this release branch).
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Publish Maven artifacts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (full history for tag ancestry validation)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Validate release tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if ! [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+            echo "Tag must be vX.Y.Z (got: ${GITHUB_REF_NAME})"; exit 1
+          fi
+          git fetch origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" refs/remotes/origin/main; then
+            echo "Tag ${GITHUB_REF_NAME} points at a commit that is not on the protected main branch"
+            exit 1
+          fi
+
+      - name: Validate release secrets
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          GPG_KEY_CONTENTS: ${{ secrets.GPG_KEY_CONTENTS }}
+          SIGNING_KEY_ID: ${{ secrets.SIGNING_KEY_ID }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: |
+          test -n "${MAVEN_CENTRAL_USERNAME}" || { echo "MAVEN_CENTRAL_USERNAME is not set"; exit 1; }
+          test -n "${MAVEN_CENTRAL_PASSWORD}" || { echo "MAVEN_CENTRAL_PASSWORD is not set"; exit 1; }
+          test -n "${GPG_KEY_CONTENTS}" || { echo "GPG_KEY_CONTENTS is not set"; exit 1; }
+          test -n "${SIGNING_KEY_ID}" || { echo "SIGNING_KEY_ID is not set"; exit 1; }
+          test -n "${SIGNING_PASSWORD}" || { echo "SIGNING_PASSWORD is not set"; exit 1; }
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+          gpg-private-key: ${{ secrets.GPG_KEY_CONTENTS }}
+          gpg-passphrase: SIGNING_PASSWORD
+        env:
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+
+      - name: Configure Maven servers
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<EOF
+          <settings>
+            <servers>
+              <server>
+                <id>central</id>
+                <username>${MAVEN_CENTRAL_USERNAME}</username>
+                <password>${MAVEN_CENTRAL_PASSWORD}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+
+      - name: Verify (full reactor, release gate)
+        run: mvn -B clean verify
+
+      - name: Assert artifact license content
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          for module in workflow-engine spring-boot-starter; do
+            jar=$(ls ${module}/target/*.jar | grep -v -E 'sources|javadoc' | head -1)
+            if [ -z "$jar" ]; then echo "no binary jar found for ${module}"; exit 1; fi
+            unzip -l "$jar" | grep -q "META-INF/LICENSE" || { echo "$jar is missing META-INF/LICENSE"; exit 1; }
+            unzip -l "$jar" | grep -q "META-INF/NOTICE" || { echo "$jar is missing META-INF/NOTICE"; exit 1; }
+          done
+          echo "License and notice files present in all publishable jars"
+
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          SIGNING_KEY_ID: ${{ secrets.SIGNING_KEY_ID }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.SIGNING_PASSWORD }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Publishing version ${VERSION} from tag ${GITHUB_REF_NAME}"
+          mvn -B -Prelease deploy \
+            -Drevision="${VERSION}" \
+            -Dgpg.executable=gpg \
+            -Dgpg.keyname="${SIGNING_KEY_ID}"
+
+  github-release:
+    name: Create GitHub release from changelog
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout changelog
+        uses: actions/checkout@v5
+
+      - name: Create release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          NOTES=$(awk -v ver="$VERSION" '
+            index($0, "## [" ver "]") == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md)
+          HEADER="Released to Maven Central as net.openan.workflow.sdk:*:${VERSION}."
+          if [ -n "$NOTES" ]; then
+            BODY="${HEADER}
+
+          ${NOTES}"
+          else
+            BODY="$HEADER"
+          fi
+          gh release create "${GITHUB_REF_NAME}" --verify-tag \
+            --title "${GITHUB_REF_NAME}" --notes "$BODY"

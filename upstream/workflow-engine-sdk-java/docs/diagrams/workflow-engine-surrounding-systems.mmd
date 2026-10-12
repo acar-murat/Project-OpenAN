@@ -1,0 +1,63 @@
+%%{
+  init: {
+    "flowchart": {
+      "curve": "basis",
+      "nodeSpacing": 55,
+      "rankSpacing": 75
+    }
+  }
+}%%
+flowchart TB
+    classDef external fill: #EEF4FF, stroke: #2563EB, color: #172554, stroke-width: 1.5px
+    classDef host fill: #FFF7ED, stroke: #EA580C, color: #431407, stroke-width: 1.5px
+    classDef sdk fill: #ECFDF5, stroke: #059669, color: #052E16, stroke-width: 1.5px
+    classDef local fill: #F8FAFC, stroke: #64748B, color: #0F172A, stroke-dasharray: 5 3
+    classDef agent fill: #F5F3FF, stroke: #7C3AED, color: #2E1065, stroke-width: 1.5px
+
+    subgraph CONTROL["External systems"]
+        direction LR
+        CALLER["External A2A requester<br/>Task request and final response"]:::external
+        REG["Registry center<br/>AgentCard publication and discovery"]:::external
+        ORCH["Orchestration center<br/>Workflow search and loading"]:::external
+    end
+
+    subgraph HOST["Host agent"]
+        direction TB
+        ENTRY["A2A server entry<br/>Receive and validate inbound tasks"]:::host
+        ADAPTER["Host integration layer<br/>Prepare AgentCards, Workflow, configuration and context"]:::host
+
+        subgraph ENGINE["Embedded Workflow Execution Engine SDK"]
+            direction TB
+            LOAD["Discovery helpers<br/>RegistryClient / LoadPsop"]:::sdk
+            RUN["Workflow protocol scheduling<br/>ExecutePsop → WorkflowExecutor<br/>Task-T + Negotiation-T"]:::sdk
+            CALLBACK["Host callbacks<br/>ControlPoint / EventCallback / onFinish"]:::sdk
+            EXT["Independent protocol operations<br/>ExtensionSender<br/>Authorization-T / Notification-T"]:::sdk
+        end
+
+        BIZ["Host business implementation<br/>Content, routing, aggregation, persistence and notification handling"]:::host
+    end
+
+    subgraph SAMPLE["Optional local fixtures (non-production)"]
+        direction LR
+        LOCALCARD["Local AgentCard JSON"]:::local
+        LOCALPSOP["Local Workflow fixture"]:::local
+    end
+
+    subgraph DOWNSTREAM["Dispatched agents"]
+        AGENTS["One or more dispatched agents"]:::agent
+    end
+
+    CALLER <-->|"A2A request / final result"| ENTRY
+    ENTRY -->|"Validated intent and input"| ADAPTER
+    REG -->|"Discover AgentCards"| LOAD
+    ORCH -->|"Search / load Workflow"| LOAD
+    LOCALCARD -.->|"Development fixture"| ADAPTER
+    LOCALPSOP -.->|"Development fixture"| ADAPTER
+    LOAD -->|"Discovery results"| ADAPTER
+    ADAPTER -->|" Workflow + AgentCards "| RUN
+    RUN <-->|"Business decisions and results"| CALLBACK
+    CALLBACK <-->|"Callbacks"| BIZ
+    ADAPTER -->|"Independent business timing"| EXT
+    RUN <-->|"Task-T; Negotiation-T when required"| AGENTS
+    EXT <-->|"Authorization-T / Notification-T"| AGENTS
+    BIZ -->|"Final business result"| ENTRY

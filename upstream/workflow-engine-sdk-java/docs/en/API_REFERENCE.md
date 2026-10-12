@@ -1,0 +1,815 @@
+# A2A-T Workflow Execution Engine - API Reference
+
+## Package Overview
+
+| Package                               | Description                                     |
+|---------------------------------------|-------------------------------------------------|
+| `dev.openan.workflow.engine.client`   | A2A message transport, auth, extensions, config |
+| `dev.openan.workflow.engine.control`  | User decision points and event system           |
+| `dev.openan.workflow.engine.core`     | DAG traversal engine and context assembly       |
+| `dev.openan.workflow.engine.model`    | Data models (Workflow, Task, results)           |
+| `dev.openan.workflow.engine.registry` | PSOP loading and AgentCard registry             |
+| `dev.openan.workflow.engine.runner`   | Entry point for workflow execution              |
+| `dev.openan.workflow.engine.spring`   | Spring Boot server auto-configuration (starter) |
+
+---
+
+## dev.openan.workflow.engine.runner
+
+### ExecutePsop
+
+Entry point for executing a PSOP workflow. Uses the Builder pattern.
+
+#### ExecutePsop.Builder
+
+| Method                                   | Type     | Default     | Description                                                                                                                       |
+|------------------------------------------|----------|-------------|-----------------------------------------------------------------------------------------------------------------------------------|
+| `psop(Workflow)`                         | required | -           | PSOP workflow definition                                                                                                          |
+| `agentCards(List<AgentCard>)`            | optional | `List.of()` | Cards for dispatched agents; required for remote steps unless a configured `engineClient` supplies transport                      |
+| `controlPoint(ControlPoint)`             | required | -           | User decision implementation                                                                                                      |
+| `engineClient(WorkflowEngineClient)`     | optional | null        | Pre-configured client (null = auto-create); cannot be combined with AgentCard, runtime, TLS, or credentials construction settings |
+| `runtimeIntent(String)`                  | optional | `""`        | Natural-language intent for context assembly                                                                                      |
+| `lang(String)`                           | optional | `"zh"`      | Language hint (`"zh"` or `"en"`)                                                                                                  |
+| `credentialsConfigPath(String)`          | optional | null        | Path to credentials JSON file                                                                                                     |
+| `sslVerify(boolean)`                     | optional | `true`      | Whether to verify TLS certificates                                                                                                |
+| `caCertsPath(String)`                    | optional | null        | Path to CA certificates PEM file                                                                                                  |
+| `a2aClientRuntime(A2AJavaClientRuntime)` | optional | null        | Custom runtime (null = auto-create)                                                                                               |
+| `eventCallback(EventCallback)`           | optional | null        | Real-time event callback                                                                                                          |
+| `onFinish(BiConsumer)`                   | optional | null        | Called when execution completes                                                                                                   |
+| `onEvent(Function)`                      | optional | null        | Per-event transformation hook                                                                                                     |
+
+```java
+ExecutionResult result = ExecutePsop.builder()
+        .psop(workflow)
+        .agentCards(cards)
+        .controlPoint(cp)
+        .runtimeIntent("analyze request")
+        .sslVerify(false)
+        .execute()
+        .get(10, TimeUnit.MINUTES);
+```
+
+**Returns:** `CompletableFuture<ExecutionResult>`
+
+---
+
+## dev.openan.workflow.engine.client
+
+### WorkflowEngineClient
+
+```java
+CompletableFuture<SendMessageResult> sendTask(String agentName, MessageContent content);
+CompletableFuture<SendMessageResult> sendTask(String agentName, MessageContent content,
+    NegotiationStrategy negotiationStrategy);
+CompletableFuture<SendMessageResult> sendTask(String agentName, MessageContent content,
+    NegotiationStrategy negotiationStrategy, EventCallback invocationEvents);
+CompletableFuture<SendMessageResult> getTask(String agentName, String taskId);
+CompletableFuture<ListTasksResult> listTasks(String agentName, ListTasksParams params);
+CompletableFuture<SendMessageResult> cancelTask(String agentName, String taskId);
+CompletableFuture<SendMessageResult> subscribeToTask(String agentName, String taskId, Consumer<Map<String,Object>> callback);
+long callbackTimeoutSeconds();
+void setControlPoint(ControlPoint callbacks);
+void setEventCallback(EventCallback callback);
+void close();
+```
+
+`listTasks` and `cancelTask` expose the standard A2A task-management operations through the same
+AgentCard, authentication and custom runtime as message dispatch. A list result is authorization-scoped:
+it contains only tasks visible to the authenticated identity. Callers must paginate with
+`nextPageToken`; cancellation is not implied by closing a local client or notification stream. The Future returned by
+`subscribeToTask` represents the subscription result, not an independently closeable SSE handle. Cancelling it does not
+guarantee transport termination; close the owning Client/Runtime to release a non-terminal subscription.
+
+`sendTask` executes final host-provided content outside a DAG. Every call has a fresh context and uses the same send,
+wait, task-query and Negotiation-T loop as workflow execution. The overload takes a per-call strategy without changing
+the client-wide ControlPoint. If a known remote task remains non-final after a timeout, missing handler or other local
+interaction failure, the client attempts to cancel it before completing exceptionally. `sendTask` is the only public
+task-submission name; protocol-runtime implementations may still use the A2A operation name `sendMessage` internally.
+
+Plain A2A content does not require Task-T. When Task-T is activated, its metadata must be present and the target
+AgentCard must declare Task-T support.
+
+After `onTask` returns, the executor calls `sendTask` internally; `onTask` does not send. Content is final
+parts/metadata/extensions. The engine manages
+envelopes and interactions, never instantiates A2ATClient or generates content from AgentCard declarations. Template
+queries and generation belong to the host SDK.
+
+Declaring Negotiation-T in an AgentCard does not activate it. When the host business allows negotiation for the current
+task, call `withExtension(A2ATExtension.NEGOTIATION_T.uri())` on the initial Task-T `MessageContent`; the engine mirrors
+that selection into the message extensions and the `A2A-Extensions` request header. `onNegotiation` and
+`NegotiationStrategy` only handle a received Propose and do not modify the initial extension set.
+
+Only a remote `INPUT_REQUIRED` or a taskless bare message carrying a valid Negotiation-T Propose enters
+`onNegotiation` (the latter is the A2A-T pre-task mode: correlated by contextId and negotiation id, with taskId-less
+follow-up sends). Terminal responses never restart negotiation; ordinary `INPUT_REQUIRED` fails explicitly. Invalid
+negotiation metadata on a bare message also fails explicitly instead of being treated as a normal response. The host validates/interprets the proposal and
+generates the final Accept/Reject/Abort with its own A2A-T client. Use `A2atMessages.contextOf(request.received())` to
+obtain the received context; reply with the same id, round and maxRounds. The last allowed round can still be answered.
+Do not call nextRound for an ending reply or return a new Propose.
+
+Return `new NegotiationReply.Send(content)` to send that exact content. Return `new NegotiationReply.Stop(code, reason)`
+to stop without generating Abort content; the engine then cancels the known non-final A2A task as lifecycle cleanup.
+Repeated task/session/round events do not repeat the callback or submission.
+Unchanged waiting state is observed with getTask.
+`maxNegotiationExchanges` (default 3) bounds local interactions, independently of the SDK context's maxRounds. Timeout,
+exhausted budget or a missing handler fails locally; no implicit Accept or synthesized Abort. Accept/Reject ACKs in
+SUBMITTED/WORKING remain pending and are observed without resending the command. A business-sent Abort is never
+task success, even if the dispatched agent acknowledges it with COMPLETED.
+
+### ExtensionSender
+
+```java
+CompletableFuture<SendMessageResult> sendAuthorization(String agentName, MessageContent content);
+NotificationSubscription openNotification(String agentName, MessageContent content,
+    BiConsumer<NotificationSubscription, ReceivedMessage> listener);
+```
+
+Authorization and notification accept host-generated final content. Use separate transport/runtime/context instances;
+their outcomes do not gate the workflow. openNotification registers a handle before I/O, and passes it plus
+ReceivedMessage directly to the listener. acknowledgement() is the real ACK; timeout fails. close() requests closure;
+completion() observes actual stream termination. For compatibility, `heartbeat().lastEventAt()` keeps its old name but
+represents the last transport activity. A standard SSE `: heartbeat` refreshes it without increasing `eventCount`, which
+counts decoded A2A business events only.
+`lastBusinessEventAt()` returns the most recent business-event time.
+
+`new DefaultExtensionSender(transport)` owns and closes the transport. Use
+`DefaultExtensionSender.nonOwning(transport)` only when another component owns the transport, and then close
+subscriptions and the transport explicitly.
+
+### WorkflowEngineClientConfig
+
+Builder-based configuration for the workflow engine client.
+
+| Property                        | Type           | Default | Description                                                                                                                                             |
+|---------------------------------|----------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `sslVerify`                     | `boolean`      | `true`  | TLS chain verification for HTTP/JSON-RPC; disabling it keeps hostname checks and the mTLS client identity. Disabling it uses plaintext for default gRPC |
+| `caCertsPath`                   | `String`       | null    | Path to CA certs PEM file                                                                                                                               |
+| `clientCertPath`                | `String`       | null    | Path to the mTLS client certificate chain; default gRPC requires `sslVerify=true`                                                                       |
+| `clientKeyPath`                 | `String`       | null    | Path to a PKCS#8 PEM/DER mTLS private key                                                                                                               |
+| `clientKeyPassword`             | `String`       | null    | Password for an encrypted PKCS#8 private key                                                                                                            |
+| `crlPath`                       | `String`       | null    | X.509 CRL for HTTP/JSON-RPC; the default gRPC runtime rejects this unsupported combination                                                              |
+| `sendTimeoutSeconds`            | `long`         | `600`   | SSE stream timeout (10 min default)                                                                                                                     |
+| `notificationAckTimeoutSeconds` | `long`         | `300`   | Wait for the first Notification-T ACK/event (five minutes by default)                                                                                   |
+| `taskPollIntervalMillis`        | `long`         | `20000` | Fallback task polling interval when an SSE stream ends before a terminal state (e.g. a gateway closes the channel mid-stream); 20 seconds by default. While SSE is alive (heartbeats still arriving), polling does not start |
+| `sendExecutorCoreSize`          | `int`          | `4`     | Send executor core threads                                                                                                                              |
+| `sendExecutorMaxSize`           | `int`          | `16`    | Send executor maximum threads                                                                                                                           |
+| `sendExecutorQueueCapacity`     | `int`          | `256`   | Bounded send executor queue capacity                                                                                                                    |
+| `authProvider`                  | `AuthProvider` | null    | Custom auth provider                                                                                                                                    |
+| `credentialsConfigPath`         | `String`       | null    | Path to credentials JSON; explicit missing or malformed files fail startup                                                                              |
+| `credentialEncryptionKey`       | `String`       | null    | Host-supplied decryption key; never loaded from LLM .env                                                                                                |
+| `credentialsConfig`             | `Map`          | null    | Inline credentials config; must match AgentCard security requirements                                                                                   |
+| `maxNegotiationExchanges`       | `int`          | `3`     | Local interaction budget, independent of SDK maxRounds                                                                                                  |
+
+`credentialsConfigPath` and `credentialsConfig` are mutually exclusive built-in credential sources; configuring both
+fails when the configuration is built.
+
+```java
+WorkflowEngineClientConfig config = WorkflowEngineClientConfig.builder()
+        .sslVerify(true)
+        .caCertsPath("ca.pem")
+        .clientCertPath("client-cert.pem")
+        .clientKeyPath("client-key.pem")
+        .sendTimeoutSeconds(900)
+        .notificationAckTimeoutSeconds(300)
+        .credentialsConfigPath("creds.json")
+        .maxNegotiationExchanges(5)
+        .authProvider(myProvider)
+        .build();
+```
+
+### AuthProvider
+
+Custom authentication provider for non-standard auth mechanisms.
+
+```java
+public interface AuthProvider {
+    void applyAuth(String agentName, AgentCard agentCard,
+                   Map<String, String> headers);
+}
+```
+
+Called for every message send. The `headers` map is mutable; add `Authorization`, custom headers, etc. `AuthProvider`
+can be the sole authentication source, including when `securityRequirements` is non-empty and credentials are not
+configured. When credentials are also configured, both sets are computed independently and merged; different values for
+the same header name throw `SecurityException` instead of silently overwriting either value.
+
+### A2atMessages
+
+Submit custom extensions via MessageContent(parts, metadata, extensions); no engine content-handler registration.
+A2atMessages.from(MetadataContent, List<Part<?>>) preserves SDK metadata and activates the corresponding URI; contextOf
+(ReceivedMessage) or contextOf(Map<String,Object>) reads/checks canonical negotiation context. This adapter uses
+a2a-t-core only, never content generation or semantic validation.
+
+### A2AJavaClientRuntime
+
+Runtime seam for A2A SDK message transport. Implement this interface to replace the transport completely, including a
+vendor SDK or a non-HTTP channel.
+
+```java
+public interface A2AJavaClientRuntime {
+    Iterable<ClientEvent> sendMessage(
+            AgentCard agentCard, MessageSendParams params,
+            ClientCallContext callContext,
+            Consumer<ClientEvent> eventSink,
+            Consumer<String> logSink);
+
+    void close();
+}
+```
+
+The engine provides `DefaultA2AJavaClientRuntime`. If an integration only needs to rewrite URIs or add gateway headers,
+subclass the default runtime and decorate its configured `A2AHttpClient`; do not reimplement message dispatch, SSE, or
+standard A2A error handling:
+
+```java
+public final class GatewayRuntime extends DefaultA2AJavaClientRuntime {
+    @Override
+    protected A2AHttpClient customizeHttpClient(A2AHttpClient httpClient) {
+        return new GatewayHttpClientDecorator(httpClient);
+    }
+}
+```
+
+The client passed to the hook already contains the engine's TLS, protocol logging, and error handling. A decorator must
+preserve request headers, the JSON body, and SSE message/error/completion callbacks, and must return a non-null client.
+The hook applies only to REST/JSON-RPC HTTP transports; implement `A2AJavaClientRuntime` for gRPC or a completely
+different transport.
+
+### ConversationScopedA2AJavaClientRuntime
+
+Optional lifecycle callback for runtime implementations whose transport session spans multiple A2A requests (e.g. a
+gateway login that must stay alive across all negotiation rounds).
+
+```java
+public interface ConversationScopedA2AJavaClientRuntime {
+    void closeConversation(AgentCard agentCard, String contextId);
+}
+```
+
+When the runtime also implements this interface, the engine calls `closeConversation` after the full send + negotiation
+cycle completes — not after each individual HTTP request. This allows gateway sessions to be released only after the
+logical conversation is done.
+
+Implement alongside `A2AJavaClientRuntime`:
+
+```java
+public class MyGatewayRuntime
+        implements A2AJavaClientRuntime, ConversationScopedA2AJavaClientRuntime {
+    @Override
+    public Iterable<ClientEvent> sendMessage(...) { ... }
+
+    @Override
+    public void closeConversation(AgentCard agentCard, String contextId) {
+        // release gateway session
+    }
+
+    @Override
+    public void close() { ... }
+}
+```
+
+### AgentCardJacksonModule
+
+Jackson module for deserializing AgentCard JSON with security scheme normalization. Handles the OpenAPI-format
+`securitySchemes` / `securityRequirements` fields that the A2A SDK's strongly-typed `AgentCard` record expects.
+
+```java
+ObjectMapper mapper = new ObjectMapper()
+        .registerModule(new AgentCardJacksonModule());
+AgentCard card = mapper.readValue(
+        new File("agentcard/my_agent.json"), AgentCard.class);
+```
+
+### AgentCardNormalizer
+
+Utility that normalizes a raw `Map<String, Object>` (as returned by the Registry Center API) into the `AgentCard`
+-compatible format. Used internally by `RegistryClient.fetchAgentCards()`. Also available as a public static method for
+custom normalization:
+
+```java
+Map<String, Object> normalized = AgentCardNormalizer.normalize(rawMap);
+```
+
+### Supporting public client types
+
+The following public types support advanced integrations. Prefer the higher-level interfaces above unless a custom
+runtime, diagnostic adapter, or explicit lifecycle requires them.
+
+| Type                          | Purpose                                                                                          |
+|-------------------------------|--------------------------------------------------------------------------------------------------|
+| `A2ATExtension`               | Canonical extension names and URIs                                                               |
+| `A2ATransport`                | Low-level transport, authentication, response assembly, and subscription lifecycle               |
+| `DefaultWorkflowEngineClient` | Default `WorkflowEngineClient` implementation                                                    |
+| `DefaultExtensionSender`      | Default `ExtensionSender`; its public constructor owns the transport, while `nonOwning` does not |
+| `DefaultA2AJavaClientRuntime` | Default A2A Java SDK runtime for HTTP/JSON-RPC/gRPC                                              |
+| `CredentialCrypto`            | AES-GCM credential encryption utility and command-line entry point                               |
+| `EnvFileLoader`               | Explicit `.env` parser for host-owned configuration                                              |
+| `SslContextFactory`           | TLS context construction used by transport and discovery helpers                                 |
+| `ProtocolResponses`           | A2A event/result assembly helpers                                                                |
+| `ClientEventMapper`           | Stable event projection for callbacks and diagnostics                                            |
+| `WireLog`                     | Correlation context and protocol-observation facade                                              |
+| `RemoteA2AErrorException`     | Standard A2A HTTP error projection (`code`, `status`, `message`, typed details and safe headers) |
+
+---
+
+## dev.openan.workflow.engine.control
+
+### ControlPoint
+
+```java
+interface ControlPoint {
+    CompletableFuture<MessageContent> onTask(TaskRequest request);
+    CompletableFuture<TaskResult> onSelfTask(TaskRequest request);
+    CompletableFuture<RouteDecision> onRoute(RouteRequest request);
+    CompletableFuture<NegotiationReply> onNegotiation(NegotiationRequest request);
+}
+```
+
+onTask returns final parts/metadata/extensions; the engine sends them without generating or rewriting content.
+onSelfTask returns local TaskResult, onRoute independently allows or denies one conditional edge, and onNegotiation
+returns Send or Stop. Unconditional edges bypass onRoute and always run. Unimplemented callbacks fail explicitly. No
+echo-success, implicit route approval or automatic consent.
+
+`DefaultControlPoint` preserves those fail-fast defaults and can delegate `onNegotiation` to an injected
+`NegotiationStrategy`. Implement `NegotiationStrategy.resolve(NegotiationRequest)` when negotiation policy is the only
+custom decision; implement or build a full `ControlPoint` when task, self-task, or routing behavior also changes.
+See [Business callback contract](BUSINESS_CALLBACKS.md) for fields and working examples.
+
+### EventCallback
+
+```java
+public class EventCallback {
+    public void onEvent(String eventType, Map<String, Object> data) {
+    }
+}
+```
+
+Override to receive real-time execution events. Event types are defined in `EventType` constants.
+
+### EventType
+
+| Constant                 | Description                                                                                              |
+|--------------------------|----------------------------------------------------------------------------------------------------------|
+| `STEP_START`             | A workflow step began                                                                                    |
+| `STEP_COMPLETE`          | A workflow step completed                                                                                |
+| `TASK_REQUEST`           | A task was dispatched to an agent                                                                        |
+| `TASK_RESPONSE`          | A task response was received                                                                             |
+| `TASK_STATUS_CHANGED`    | A task's status changed (pending → running → success/failed)                                             |
+| `AGENT_REQUEST`          | A message was sent to an agent                                                                           |
+| `AGENT_RESPONSE`         | A response was received from an agent                                                                    |
+| `AGENT_STATUS_UPDATE`    | Agent SSE status update (SUBMITTED, WORKING, etc.)                                                       |
+| `AGENT_ARTIFACT_UPDATE`  | Agent SSE artifact update                                                                                |
+| `AGENT_MESSAGE_EVENT`    | Agent SSE message event                                                                                  |
+| `NEGOTIATION_REQUEST`    | Agent requested negotiation (INPUT_REQUIRED)                                                             |
+| `NEGOTIATION_RESOLVED`   | Clarification was sent to agent                                                                          |
+| `NEGOTIATION_FAILED`     | Negotiation could not be resolved                                                                        |
+| `AUTHORIZATION_REQUEST`  | Reserved; not currently emitted (authorization results arrive via the `ExtensionSender` future)          |
+| `AUTHORIZATION_RESOLVED` | Reserved; not currently emitted                                                                          |
+| `NOTIFICATION`           | Reserved; not currently emitted (subscription events arrive via the `NotificationSubscription` callback) |
+| `ROUTE_DECISION`         | Successful routing result for one outgoing edge                                                          |
+| `WORKFLOW_COMPLETE`      | DAG scheduling ended; check success, not all nodes necessarily ran                                       |
+| `START`                  | Workflow execution started                                                                               |
+| `COMPLETE`               | Workflow execution completed successfully                                                                |
+| `ERROR`                  | Workflow execution failed                                                                                |
+| `CLOSE`                  | Engine client closed                                                                                     |
+
+---
+
+## dev.openan.workflow.engine.registry
+
+### LoadPsop
+
+Load and search PSOP workflows from the orchestration center.
+
+#### load
+
+```java
+static Workflow load(String baseUrl, String psopId,
+                     String accessToken, boolean sslVerify)
+static Workflow load(String baseUrl, String psopId,
+                     String accessToken, boolean sslVerify, LoadPsop.Timeouts timeouts)
+
+static Workflow load(String baseUrl, String psopId)
+```
+
+GET `/api/v1/orchestrate/psop/{psop_id}`. Returns the full workflow with steps, subtasks, and routing conditions.
+
+#### search
+
+```java
+static List<WorkflowSearchResult> search(
+        String baseUrl, String intent, int topN,
+        String accessToken, boolean sslVerify)
+static List<WorkflowSearchResult> search(
+        String baseUrl, String intent, int topN,
+        String accessToken, boolean sslVerify, LoadPsop.Timeouts timeouts)
+
+static List<WorkflowSearchResult> search(
+        String baseUrl, String intent)
+```
+
+POST `/api/v1/orchestrate/search`. Returns ranked workflow summaries matched by natural-language intent.
+
+LoadPsop convenience overloads default to `sslVerify=true`, using JVM trust and hostname checks.
+Explicit `false` skips certificate-chain and hostname verification on that orchestration HTTPS connection only,
+allowing development without a local CA file. The server still needs a TLS certificate; this does not bypass
+mTLS, modify JVM-wide defaults, or change other clients' TLS policies. Production must verify trust and matching SANs.
+This is distinct from the engine's southbound HTTP/JSON-RPC verification policy. Connection and read timeouts both
+default to 30 seconds. Supply
+`new LoadPsop.Timeouts(connectTimeout, readTimeout)` to set positive per-call values.
+
+### RegistryClient
+
+The two-argument constructor uses a 30-second complete-response deadline. Override it with
+`new RegistryClient(url, sslVerify, Duration.ofSeconds(15))`; the duration must be positive.
+The deadline includes response-body consumption, and interruption cancels the pending request.
+Registry methods return JSON maps; convert them to AgentCard with AgentCardJacksonModule as shown in the integration guide.
+
+
+Fetch and register AgentCards from the Registry Center.
+
+```java
+new RegistryClient("https://127.0.0.1:5000",false)
+
+List<Map<String, Object>> fetchAgentCards()
+
+Map<String, Object> fetchAgentCard(String name)
+
+Map<String, Object> fetchAgentCard(String name, String organization)
+
+Map<String, Object> registerAgentCard(Map<String, Object> agentCard)
+```
+
+- `fetchAgentCards`: GET all cards from registry
+- `fetchAgentCard`: GET a specific card by name (and optionally organization)
+- `registerAgentCard`: POST a card to the registry
+
+---
+
+## dev.openan.workflow.engine.core
+
+### WorkflowExecutor
+
+Mid-layer DAG traversal engine. Walks workflow steps, selects typed upstream execution results through `ContextBuilder`,
+dispatches subtasks in parallel, applies step success policies (`ALL_SUCCESS` / `ANY_SUCCESS` / `SELF_LOOP`), and routes
+to the next step.
+
+Not typically instantiated directly by SDK users — `ExecutePsop` wraps it internally. Exposed for advanced integrations
+that need to run the traversal layer without the runner's lifecycle management.
+
+```java
+WorkflowExecutor executor = new WorkflowExecutor(
+        workflow, controlPoint, engineClient,
+        eventCallback, runtimeIntent, lang);
+ExecutionResult result = executor.run().join();
+```
+
+---
+
+## dev.openan.workflow.engine.model
+
+### Workflow
+
+| Field         | Type                 | Description            |
+|---------------|----------------------|------------------------|
+| `id`          | `String`             | Workflow ID            |
+| `name`        | `String`             | Workflow name          |
+| `description` | `String`             | Description            |
+| `steps`       | `List<WorkflowStep>` | Ordered workflow steps |
+
+Static factory: `Workflow.fromMap(Map<String, Object>)` parses from orchestration center API response.
+
+### WorkflowStep
+
+| Field         | Type                  | Default       | Description                                                                                                       |
+|---------------|-----------------------|---------------|-------------------------------------------------------------------------------------------------------------------|
+| `name`        | `String`              | -             | Step name (unique within workflow)                                                                                |
+| `subtasks`    | `List<Task>`          | `List.of()`   | Subtasks dispatched in this step                                                                                  |
+| `next`        | `List<JumpCondition>` | `List.of()`   | Conditional next steps                                                                                            |
+| `layer`       | `int`                 | `0`           | Design-time hint; dependency graph selects context                                                                |
+| `contextFrom` | `List<String>`        | null          | Aggregation source: omitted = direct predecessors, `[]` = none, `"*"` = all ancestors, or explicit ancestor names |
+| `stepType`    | `StepType`            | `ALL_SUCCESS` | Execution mode                                                                                                    |
+
+### StepType
+
+| Value         | Description                                                                                                            |
+|---------------|------------------------------------------------------------------------------------------------------------------------|
+| `ALL_SUCCESS` | All subtasks must succeed                                                                                              |
+| `ANY_SUCCESS` | Any subtask success is sufficient                                                                                      |
+| `SELF_LOOP`   | The host agent handles the task locally via `onSelfTask`; no A2A-T message is sent. Success follows `ALL_SUCCESS`. |
+
+### TaskStatus
+
+Task lifecycle status, used in `TASK_STATUS_CHANGED` events for cross-SDK consistency with the Python SDK.
+
+| Value     | String      | Description                   |
+|-----------|-------------|-------------------------------|
+| `PENDING` | `"pending"` | Task created, not yet started |
+| `RUNNING` | `"running"` | Task in progress              |
+| `SUCCESS` | `"success"` | Task completed successfully   |
+| `FAILED`  | `"failed"`  | Task failed                   |
+
+### Task
+
+| Field         | Type     | Description                         |
+|---------------|----------|-------------------------------------|
+| `agent`       | `String` | Agent name (matches AgentCard.name) |
+| `skill`       | `String` | Agent skill ID                      |
+| `description` | `String` | Task description                    |
+
+### JumpCondition
+
+| Field       | Type     | Description                                        |
+|-------------|----------|----------------------------------------------------|
+| `step`      | `String` | Next step name (`"end"` for terminal)              |
+| `condition` | `String` | Condition expression (`"success"`, `"fail"`, etc.) |
+
+### TaskRequest / BusinessInput
+
+TaskRequest uses getXxx() accessors:
+
+| Field                        | Meaning                                                                           |
+|------------------------------|-----------------------------------------------------------------------------------|
+| executionId / taskId         | Local execution/logical task identities, not remote protocol IDs                  |
+| stepName / agentName / skill | Current workflow step, destination and skill                                      |
+| instruction / language       | Current instruction only; no appended history                                     |
+| input                        | BusinessInput: exactly one of text or arbitrary JSON-serializable data; no schema |
+| workflowInput                | WorkflowInput(runtimeIntent, upstreamResults), separate from current input        |
+
+BusinessInput.text(value) / BusinessInput.data(value) create input snapshots. WorkflowInput, UpstreamStepResult,
+ReceivedMessage and NegotiationRequest use record field() accessors.
+`BusinessValues.snapshot`, `map`, and `list` expose the same defensive JSON snapshot behavior for host-owned values;
+nested arrays remain individual values and returned collections are unmodifiable.
+
+| contextFrom             | Upstream selection                           |
+|-------------------------|----------------------------------------------|
+| absent / null           | Available direct predecessors                |
+| []                      | No upstream results; runtimeIntent remains   |
+| ["*"]                   | Available ancestors                          |
+| explicit ancestor names | Available named results in declaration order |
+
+contextFrom selects evidence, not scheduling edges; define dependencies with next. Unknown/non-ancestor names or mixing
+"*" with names is invalid. Unselected/inactive branches are not fabricated. The engine never appends upstream results to
+instruction/parts or invokes an LLM to map them. The host decides how to consume the window or map it to the next
+agent's input.
+
+The window is stepName → taskResults[] → outputs[] / receivedMessages[]. TaskExecutionResult also retains agentName,
+skill, logical taskId, taskDescription, status, error, errorCode and errorDetails. Multiple subtasks remain
+distinguishable. Nested arrays remain one output value; there is no requirement that outputs originated from an LLM.
+
+### MessageContent / ReceivedMessage
+
+```java
+record MessageContent(List<Part<?>> parts, Map<String,Object> metadata, Set<String> extensions) {}
+record ReceivedMessage(MessageContent message, Map<String,Object> taskMetadata, List<Artifact> artifacts) {}
+```
+
+MessageContent.text(text), MessageContent.parts(parts), or the canonical constructor create snapshots. TextPart,
+DataPart and FilePart preserve order and part metadata. File references are not fetched. MessageContent has no role,
+target, messageId, taskId, contextId or auth headers. A business metadata key named contextId does not override the A2A
+envelope.
+
+ReceivedMessage preserves message metadata, task metadata and each artifact's identity/parts/metadata separately.
+message can be null; metadata-only results remain accessible through the complete view. For convenience, outputs
+projects TextPart values and DataPart data from artifacts in order; if there are no artifacts, a successful
+final/standalone message can supply these values. FilePart remains available only in the complete view. No text parsing,
+adjacent-part concatenation or nested-array flattening. Failed task status messages are evidence, not outputs; valid
+partial artifacts are retained. Streaming append/replace is assembled per artifact; terminal snapshots do not duplicate
+earlier chunks.
+
+TaskResult.success(List<Object>) represents local output, including an empty list. TaskResult.failure(code, message)
+separates failure from output; its builder can retain valid partial outputs. TaskResult includes receivedMessages for
+remote evidence; remote convenience outputs derive from that view. A remote task succeeds only in COMPLETED, or a
+standalone A2A Message can complete the interaction. Progress and negotiation are never a successful workflow task
+merely because they have text.
+
+### NegotiationRequest / NegotiationReply
+
+See [BUSINESS_CALLBACKS](BUSINESS_CALLBACKS.md).
+
+### SendMessageResult
+
+getReceivedMessages() preserves response levels; getOutputs() is a convenience projection. getTask()/getTaskState()
+retain actual remote state; failureCode/failureMessage describe independent local interaction failure. text and
+flattened metadata are transport diagnostics, not substitutes for the complete business response.
+
+### ExecutionResult
+
+| Field         | Type               | Description                |
+|---------------|--------------------|----------------------------|
+| `success`     | `boolean`          | Whether workflow succeeded |
+| `history`     | `List<Map>`        | Per-step execution history |
+| `stepOutputs` | `Map<String, Map>` | Outputs keyed by step name |
+| `error`       | `String`           | Error message (if failed)  |
+
+### RouteRequest / RouteDecision
+
+`RouteRequest` describes one conditional edge, not the complete outgoing-edge list:
+
+| Field            | Type                        | Description                              |
+|------------------|-----------------------------|------------------------------------------|
+| `executionId`    | `String`                    | Current workflow execution               |
+| `stepName`       | `String`                    | Source step                              |
+| `nextStep`       | `String`                    | Target of this edge                      |
+| `condition`      | `String`                    | Nonblank business condition to evaluate  |
+| `workflowInput`  | `WorkflowInput`             | Selected protocol-neutral context window |
+| `currentResults` | `List<TaskExecutionResult>` | Results produced by the source step      |
+
+| `RouteDecision` field | Type      | Description                         |
+|-----------------------|-----------|-------------------------------------|
+| `allowed`             | `boolean` | Whether this edge must be activated |
+| `reason`              | `String`  | Optional business decision reason   |
+
+Use `RouteDecision.allow(...)` or `RouteDecision.deny(...)`. Every blank-condition edge is activated without invoking
+the callback; every allowed conditional edge is activated as well, so one source step can fan out to multiple targets.
+
+### WorkflowSearchResult
+
+| Field            | Type           | Description        |
+|------------------|----------------|--------------------|
+| `workflowId`     | `String`       | Workflow ID        |
+| `workflowType`   | `String`       | Type               |
+| `name`           | `String`       | Name               |
+| `description`    | `String`       | Description        |
+| `tags`           | `List<String>` | Tags               |
+| `createdAt`      | `String`       | Creation timestamp |
+| `score`          | `double`       | Relevance score    |
+| `userIntent`     | `String`       | Matched intent     |
+| `relatedPreflow` | `String`       | Related preflow    |
+| `tasksSummary`   | `String`       | Task summary       |
+
+---
+
+## Extension URI Constants
+
+| Extension       | URI                                                                                       |
+|-----------------|-------------------------------------------------------------------------------------------|
+| Task-T          | `https://projects.tmforum.org/a2aproject/telecommunication/extensions/Task-T/v1`          |
+| Negotiation-T   | `https://projects.tmforum.org/a2aproject/telecommunication/extensions/Negotiation-T/v1`   |
+| Authorization-T | `https://projects.tmforum.org/a2aproject/telecommunication/extensions/Authorization-T/v1` |
+| Notification-T  | `https://projects.tmforum.org/a2aproject/telecommunication/extensions/Notification-T/v1`  |
+
+Canonical negotiation metadata uses `templateUri` and `negotiationContext`. The latter carries
+`{id, round, maxRounds, performative}` and is required when the engine parses a negotiation message. The engine does
+not add private negotiation-state keys to the wire message.
+
+---
+
+## Thread Safety
+
+- The default engine client supports concurrent tasks. Each workflow invocation binds its own negotiation strategy and
+  event callback without mutating client defaults.
+- `ControlPoint` implementations must be thread-safe if used from multiple workflow executions concurrently.
+- `EventCallback.onEvent` is called from multiple threads (main + SSE worker threads). Use synchronization if needed.
+
+## Error Handling
+
+- Standard top-level A2A error envelopes retain their fields in `RemoteA2AErrorException`;
+  `findIn(Throwable)` also projects wrapped SDK errors. Workflow failures use `a2a.<reason>` or
+  `a2a.http.<status>`, with details in history / TASK_RESPONSE rather than business outputs.
+  Executor node events include executionId; task response events and history include the logical taskId.
+  See [integration guidance](INTEGRATION_GUIDE.md#14-a2a-errors-and-task-failures) for propagation and logging.
+
+- Missing/null/exceptional/timed-out callbacks fail explicitly. Host SDK errors may be mapped to BusinessFailure with
+  safe code/details.
+- Exhausted maxNegotiationExchanges or local Stop does not generate Abort. Business Send(Abort) is never task success.
+- Remote state/errors stay separate from outputs; failed status text is evidence, while partial artifacts remain
+  available.
+- Missing required credentials reject the request; the engine never silently sends unauthenticated.
+- Stream-exit/transport-error observations do not independently define workflow outcome; inspect ExecutionResult and
+  remote task state.
+
+---
+
+## spring-boot-starter Module
+
+The `spring-boot-starter` module provides Spring Boot auto-configuration for the A2A **server** side (not the
+client/workflow side). In a Spring Boot web application, set `a2at.server.enabled=true` to register the A2A SDK server
+components as Spring beans.
+
+### A2AProperties
+
+Configuration properties prefixed with `a2at.server`:
+
+| Property                                     | Default                    | Description                                                            |
+|----------------------------------------------|----------------------------|------------------------------------------------------------------------|
+| `a2at.server.enabled`                        | `false`                    | Enable A2A server auto-configuration                                   |
+| `a2at.server.agent-card`                     | `classpath:agentcard.json` | Path to the AgentCard JSON file (classpath: or file: prefix supported) |
+| `a2at.server.path-prefix`                    | `/a2a/json`                | URL path prefix for A2A endpoints                                      |
+| `a2at.server.slash-action-aliases-enabled`   | `false`                    | Expose slash-style action aliases for gateways that reject colons      |
+| `a2at.server.agent-timeout-seconds`          | `30`                       | Agent execution timeout in seconds                                     |
+| `a2at.server.consumption-timeout-seconds`    | `5`                        | Consumption timeout in seconds                                         |
+| `a2at.server.reconciliation-timeout-seconds` | `1`                        | Reconciliation wait timeout in seconds                                 |
+| `a2at.server.executor-core-size`             | `8`                        | Server executor core threads                                           |
+| `a2at.server.executor-max-size`              | `8`                        | Server executor maximum threads                                        |
+| `a2at.server.executor-queue-capacity`        | `100`                      | Bounded server executor queue capacity                                 |
+| `a2at.server.executor-keep-alive-seconds`    | `60`                       | Non-core thread keep-alive in seconds                                  |
+| `a2at.server.heartbeat-interval-seconds`     | `15`                       | SSE heartbeat comment interval on streaming endpoints. Keeps intermediaries from idle-timing-out long-running SSE connections. `0` disables |
+
+```yaml
+a2at:
+  server:
+    enabled: true
+    agent-card: classpath:agentcard/my_agent.json
+    path-prefix: /a2a/json
+    slash-action-aliases-enabled: false
+    agent-timeout-seconds: 30
+    executor-core-size: 8
+    executor-max-size: 16
+    executor-queue-capacity: 200
+    heartbeat-interval-seconds: 15
+```
+
+### A2AAutoConfiguration
+
+Auto-configures the following beans (all `@ConditionalOnMissingBean`, so you can override any):
+
+| Bean                | Type                          | Purpose                                                   |
+|---------------------|-------------------------------|-----------------------------------------------------------|
+| `agentCard`         | `AgentCard`                   | Loaded from `a2at.server.agent-card` path via Jackson     |
+| `a2aConfigProvider` | `A2AConfigProvider`           | SDK configuration values                                  |
+| `taskStore`         | `InMemoryTaskStore`           | In-memory task storage                                    |
+| `eventBus`          | `MainEventBus`                | Event bus for SSE streaming                               |
+| `queueManager`      | `InMemoryQueueManager`        | Event queue manager                                       |
+| `pushStore`         | `PushNotificationConfigStore` | Push notification config storage                          |
+| `agentExecutorPool` | `ExecutorService`             | Thread pool for agent execution (8 threads, daemon)       |
+| `eventBusProcessor` | `MainEventBusProcessor`       | Event bus processor                                       |
+| `requestHandler`    | `RequestHandler`              | Default request handler; operation-level authorization is enabled automatically when a `TaskAuthorizationProvider` bean exists |
+| `restHandler`       | `RestHandler`                 | REST protocol handler                                     |
+| `a2aController`     | `A2AController`               | Spring MVC controller for message and task endpoints     |
+| `a2aSlashActionAliasController` | `A2ASlashActionAliasController` | Optional public controller for slash-style action aliases |
+
+### Server-side request authorization (TaskAuthorizationProvider)
+
+Declare a `TaskAuthorizationProvider` bean (`@Component` or `@Bean`) to inject business validation
+(caller identity, request legality, ...) into every A2A operation **before** the agent executor runs:
+
+```java
+@Component
+public class WorkbenchRequestGuard implements TaskAuthorizationProvider {
+  @Override
+  public boolean checkCreate(ServerCallContext ctx, TaskOperation op) throws A2AError {
+    // message:send / message:stream (new task creation) arrive here
+    return ctx.getUser().isAuthenticated();   // false or an A2AError rejects the request
+  }
+  @Override public boolean checkRead(ServerCallContext ctx, String taskId, TaskOperation op) { ... }
+  @Override public boolean checkWrite(ServerCallContext ctx, String taskId, TaskOperation op) { ... }
+  @Override public boolean isTaskRecorded(String taskId) { ... }
+  @Override public void recordOwnership(ServerCallContext ctx, String taskId, TaskOperation op) { ... }
+}
+```
+
+- `checkCreate` guards `message:send` / `message:stream`; `checkRead` guards task query/list;
+  `checkWrite` guards task cancel; `recordOwnership`/`isTaskRecorded` track task ownership.
+- `ServerCallContext` exposes `getUser()` (authenticated user), `getRequestedExtensions()`
+  (the A2A-Extensions request header), and `getState()` (transport state).
+- Rejections return a standard A2A error envelope to the caller (`checkCreate` returning false maps
+  to a task-not-found error; throwing a more specific `A2AError` subclass carries a custom reason).
+- Without such a bean the server behaves exactly as before (no authorization decorator is wired).
+
+### A2AController
+
+Spring MVC controller that exposes A2A REST endpoints:
+
+- `POST {path-prefix}/message:send` — blocking send
+- `POST {path-prefix}/message:stream` — SSE streaming
+- `GET {path-prefix}/tasks/{id}` — query a task
+- `GET {path-prefix}/tasks` — list tasks with optional filters
+- `POST {path-prefix}/tasks/{id}:cancel` — cancel a task
+- `POST {path-prefix}/tasks/{id}:subscribe` — subscribe to task updates over SSE
+
+The colon-style routes are the canonical A2A HTTP+JSON endpoints and are always enabled. When
+`a2at.server.slash-action-aliases-enabled=true`, the starter additionally exposes compatibility aliases that delegate
+to the same controller and therefore have identical authentication, request bodies, responses, errors, streaming and
+lifecycle behavior:
+
+- `POST {path-prefix}/message/send`
+- `POST {path-prefix}/message/stream`
+- `POST {path-prefix}/tasks/{id}/cancel`
+- `POST {path-prefix}/tasks/{id}/subscribe`
+
+Prefer an API-gateway rewrite from slash-style public paths to canonical colon-style backend paths. Enable the aliases
+only when the gateway cannot rewrite the backend path. The aliases do not change the AgentCard schema or make operation
+suffixes configurable in the A2A Java REST client.
+
+HTTP+JSON responses use `application/a2a+json`; successful streaming responses use `text/event-stream`. When a stream
+closes, the controller cancels its publisher subscription and notifies the SDK event consumer so that server-side
+polling does not remain active.
+
+### Usage
+
+The partner only needs to provide an `AgentExecutor` implementation:
+
+```java
+@Component
+public class MyAgentExecutor implements AgentExecutor {
+    @Override
+    public void execute(RequestContext context, AgentEmitter emitter) throws A2AError {
+        // business logic, then emit progress and the final result:
+        emitter.updateStatus(TaskState.WORKING, statusMessage);
+        emitter.addArtifact(List.of(new TextPart("result text")));
+    }
+}
+```
+
+All other beans (AgentCard, RequestHandler, RestHandler, A2AController, etc.) are auto-configured.
