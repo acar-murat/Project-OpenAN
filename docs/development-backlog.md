@@ -1,7 +1,9 @@
 # OpenAN Energy-Saving Function — Development Backlog
 
 The change and development list for implementing
-[requirements.md](requirements.md) (LLD US202610010001 v10.2).
+[requirements.md](requirements.md), which traces to the original use cases
+([use-cases.md](use-cases.md)) and LLD US202610010001 v10.2. The first
+release delivers UC1 (power-band energy saving).
 
 **How to read it**
 
@@ -20,11 +22,11 @@ The change and development list for implementing
 | Milestone | Goal | Items | Gate |
 |---|---|---|---|
 | **M0 Foundation** | Repo layout, CI, dev stack running locally | PLT-1 … PLT-5 | Registry + Orchestration start with `docker compose up` |
-| **M1 OSS core** | Intents accepted, validated, audited, permission-checked | OSS-1 … OSS-9 | OSS API tests pass with the LLM stubbed |
-| **M2 Energy Agent (stubbed)** | Agent registered and discoverable; price skill and negotiation work against stubs | EA-1 … EA-7 | Agent appears in a semantic query; negotiation runs against Mock MAE |
+| **M1 OSS core** | Intents accepted, validated, audited, permission-checked | OSS-1 … OSS-9, OSS-14 | OSS API tests pass with the LLM stubbed |
+| **M2 Energy Agent (stubbed)** | Agent registered and discoverable; price skill and negotiation work against stubs | EA-1 … EA-7, EA-10 | Agent appears in a semantic query; negotiation runs against Mock MAE |
 | **M3 Sandbox end-to-end** | Full workflow runs in the sandbox with stub agents; OSS consumes SSE | ORC-1 … ORC-7, OSS-10 … OSS-12 | Intent → `COMPLETED` / `REJECTED` / `FAILED` end to end with stubs |
-| **M4 Front-end** | Submit, supplement, status and report screens | FE-1 … FE-4 | Manual demo against M3 |
-| **M5 Live integration** | Real price API and MAE | EA-8, EA-9, ORC-8, ORC-9, FE-5 | **Needs O-1, O-3, O-11, O-12** |
+| **M4 Front-end** | Submit, supplement, status and report screens | FE-1 … FE-4, FE-6 | Manual demo against M3 |
+| **M5 Live integration** | Real price API and MAE | EA-8, EA-9, EA-11, ORC-8, ORC-9, FE-5, FE-7 | **Needs O-1, O-3, O-11, O-12, O-21, O-22** |
 | **M6 GA hardening** | P1 items closed, security review, deployment | GA-1 … GA-8 | All 🟡 items closed |
 
 ---
@@ -55,6 +57,8 @@ The change and development list for implementing
 | OSS-6 | `POST /intents`: permission → audit `intent_received` → classify → `handled:false` or validate. | R-INT-1, R-INT-3, R-INT-5 | OSS-2 … OSS-5 | ✅ | API tests for each branch |
 | OSS-7 | Parameter validation: required `region`; derive `operation_type` and `task_description`; map to Task-T slots (LLD §11). | R-INT-6, R-INT-7 | OSS-6 | ✅ | Table-driven tests for complete / incomplete inputs |
 | OSS-8 | `POST /intents/{id}/supplement`: merge by `session_id`, audit `parameter_supplement`, re-validate. | R-INT-8 | OSS-7 | ✅ | Tests: supplement completes the intent |
+| OSS-14 | Intent schedule model: `{start_hour, end_hour, saving_mode, experience_target}` entries with enumerations, midnight wrap, and full 24-hour coverage check; seeded with the UC1 example schedule as a test fixture. | R-INT-10 … R-INT-12 | OSS-2 | ✅ | Table-driven tests: UC1 schedule passes; overlaps and gaps are rejected |
+| OSS-15 | Classifier and slot extraction produce the schedule from free text (e.g. "maximize saving overnight, keep 10 Mbps in the morning"); the supplement flow asks for missing periods. | R-INT-4, R-INT-10 | OSS-5, OSS-14 | 🟡 O-2 | Extraction tests on example phrasings |
 | OSS-9 | `GET /intents/{id}/status` with the LLD §7.8 response shape. | R-RPT-1 | OSS-2 | ✅ | API test against fixtures |
 | OSS-10 | Orchestration client: login, token refresh, **config-driven submit path** (`OSS_ORCH_SUBMIT_PATH`), audit `workflow_started`, return `202`. | R-ORC-1 … R-ORC-3 | OSS-6, ORC-1 | 🔴 O-20 (path) | Works against the dev Orchestration Center; path is changeable by config only |
 | OSS-11 | SSE worker pool: parse `data:` JSON events (F-5), map them to workflow states (LLD §6.3), treat `complete` / `error` / `cancelled` as terminal (F-6), apply the timeout, write terminal audit events once. | R-ORC-4, R-WF-6, R-AUD-2 | OSS-4, OSS-10 | 🔴 O-19 (confirm) | Tests with recorded streams, including disconnects and a missing terminal event |
@@ -71,6 +75,8 @@ The change and development list for implementing
 | EA-2 | AgentCard per LLD §9 (two skills, mTLS scheme), with placeholder `agent_id` and URL. | R-REG-1 | EA-1 | ✅ | Card validates against the SDK schema |
 | EA-3 | Capability registrar: register, publish (when approval is on), heartbeat; `layer` from `ENERGY_AGENT_REGISTRY_LAYER`. | R-REG-2 … R-REG-4 | EA-2, PLT-2 | 🟡 O-13 | Agent found by `agent-cards/semantic-query` on the dev Registry |
 | EA-4 | Price skill with a `PriceAdapter` interface and a **stub adapter** (fixed or fixture price tables). | R-PRC-1, R-PRC-2, R-PRC-4 | EA-1 | ✅ | Skill returns a valid `price_table`; failure maps to `price_api_unavailable` |
+| EA-10 | Power-band tariff model and adapter (`{band_no, min_kw, max_kw, charge, currency, billing_period}`), with the UC1 tariff as the stub data; the LLD time-of-use `price_table` is kept as a second type for UC2. | R-PRC-5 | EA-4 | ✅ (stub) | Skill returns the UC1 band table from the stub |
+| EA-11 | Build the combined A2A-T intent from the schedule and tariff; map them onto Task-T slots per the answer to O-22 (provisionally: schedule in `task_target`, tariff in `task_context`). | R-PRC-6 | EA-10, OSS-14 | 🔴 O-22 | Golden test of the generated Task-T message |
 | EA-5 | Negotiation engine: build the opening `propose`, handle both MAE replies, `accept-reject`, `abort`; round limit and per-round timeout; record `NegotiationRound`. | R-NEG-1 … R-NEG-4, R-NEG-6 | EA-1, EA-4 | ✅ (vs. mock) | Golden tests based on `a2a-t-sdk-python/tests/resources/negotiation-cases` pass |
 | EA-6 | Target-relaxation switch (`ENERGY_AGENT_ALLOW_TARGET_RELAXATION`, default off); counter-proposals go back to the user. | R-NEG-5 | EA-5 | 🟡 O-14 | Tests for both settings |
 | EA-7 | Mock MAE for development, based on the SDK sample server in `upstream/a2a-t-sdk-python/a2a-t-sample/ran-energy-saving`; returns feasible, infeasible-with-proposal, and error cases. | — | EA-5 | ✅ | Mock drives EA-5 tests and the sandbox |
@@ -104,6 +110,8 @@ The change and development list for implementing
 | FE-3 | Supplement form, driven by the missing-field list. | R-INT-7, R-INT-8 | FE-2 | ✅ | Completes an intent end to end |
 | FE-4 | Status and report view: state, counter-proposal, final report, failure reason; artifact timeline with placeholder rendering. | R-RPT-1 … R-RPT-3 | FE-1, OSS-9 | ✅ (placeholder) | Renders every terminal state from M3 |
 | FE-5 | Real artifact timeline rendering. | R-RPT-3 | **O-11**, ORC-8 | 🔴 | Renders MAE sample artifacts |
+| FE-6 | Schedule editor: a 24-hour period table (mode and experience target per period), prefilled from the extracted intent. | R-INT-10, R-INT-11 | FE-2, OSS-14 | ✅ | Edits round-trip through OSS validation |
+| FE-7 | UC1 report: per-site predicted band, site classification, migration actions, predicted cost before and after. | R-RPT-4 | FE-4, ORC-8 | 🔴 O-11 | Renders from MAE sample artifacts |
 
 ---
 
@@ -140,8 +148,10 @@ commit, and offered upstream where it is generally useful.
 
 1. **Week 1:** PLT-1 … PLT-4, OSS-1 … OSS-5, EA-1, EA-2. In parallel, raise
    ORC-1 and ORC-2 with the Orchestration Center maintainers (with findings
-   F-1 … F-7), and chase O-1, O-3, O-11 and O-12 per LLD §18.
-2. **Week 2:** OSS-6 … OSS-9, EA-3 … EA-5, EA-7, ORC-3.
-3. **Week 3:** ORC-4 … ORC-7, OSS-10 … OSS-12 (on the provisional path), FE-1 … FE-3.
+   F-1 … F-7); chase O-1, O-3, O-11 and O-12 per LLD §18; and take O-21
+   (tariff semantics) to MTN and O-22 (schedule and tariff in Task-T) to the
+   MAE team, since both change the intent model.
+2. **Week 2:** OSS-6 … OSS-9, OSS-14, EA-3 … EA-5, EA-7, EA-10, ORC-3.
+3. **Week 3:** ORC-4 … ORC-7, OSS-10 … OSS-12 (on the provisional path), FE-1 … FE-3, FE-6.
 4. **Week 4:** FE-4, a full sandbox end-to-end run (M3), then the M5 items as
    each P0 open item closes.
