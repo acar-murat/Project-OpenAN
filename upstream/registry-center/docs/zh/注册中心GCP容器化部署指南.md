@@ -1,0 +1,223 @@
+<!--
+Copyright (c) 2026 Huawei Technologies Co., Ltd.
+All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+
+   Licensed under the Apache License, Version 2.0 (the "License"); you may
+   not use this file except in compliance with the License. You may obtain
+   a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+   WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+   License for the specific language governing permissions and limitations
+   under the License.
+-->
+
+# Registry Center - Google Cloud Platform 容器化部署指南
+
+此脚本仅适用于**开发演示**，不是生产身份隔离部署。未指定 `-DevelopmentOnly` 时，
+会在创建云资源之前退出。演示明确关闭所有者隔离和签名，并要求 Cloud Run IAM 认证
+（禁止匿名访问）。生产请使用 mTLS 或独立配置可靠身份网关，详见
+[容器部署指南](../container-deployment.md)。
+
+
+本指南帮你**一步一步**把这个注册中心服务部署到 Google Cloud Platform，无需任何技术背景。
+
+---
+
+## 前置条件
+
+你需要一个 **Google Cloud 账号**（用 Gmail 注册即可），并且开通一个 **GCP 项目**并启用结算。
+
+> 新用户有 $300 免费额度，运行这个服务每天大约 $1-2（最便宜配置 (~$0.06/小时)）。
+
+### 如何创建 GCP 项目？（如果还没有）
+
+1. 浏览器打开 https://console.cloud.google.com
+2. 登录你的 Gmail 账号
+3. 顶部点 **"选择项目"** → **"新建项目"**
+4. 项目名称随便填（比如 `openan-proj`），点 **"创建"**
+5. 创建完成后，在左侧菜单 **"结算"** → 关联结算账号（需要绑定信用卡或 PayPal）
+6. **记下你的项目 ID**（GCP 会自动在名称后追加数字，格式类似 `openan-proj-123456`）
+
+---
+
+## 部署步骤（只需 3 步）
+
+### 第 1 步：安装 gcloud CLI
+
+打开 PowerShell（右键开始菜单 → "Windows PowerShell" 或 "终端"），复制下面整段命令回车：
+
+```powershell
+(New-Object Net.WebClient).DownloadFile("https://dl.google.com/dl/cloudsdk/channels/rapid/GoogleCloudSDKInstaller.exe", "$env:TEMP\gcloud-installer.exe"); Start-Process "$env:TEMP\gcloud-installer.exe" -Wait
+```
+
+安装过程中：
+- 全部默认选项，一路 **Next**
+- **勾选** "安装完成后启动 shell" 或 "Run gcloud init" 的选项
+- 如果弹出命令行窗口要求登录，用你的 Gmail 账号登录，选择刚才创建的项目
+
+> 装完后 **关掉当前 PowerShell，重新打开一个新的**。
+
+---
+
+### 第 2 步：检查登录状态
+
+在新开的 PowerShell 中执行：
+
+```powershell
+gcloud auth list
+```
+
+如果你看到你的 Gmail 账号显示出来，说明登录成功了。
+
+如果没登录，执行 `gcloud auth login`，会弹浏览器让你登录。
+
+---
+
+### 第 3 步：进入项目目录并一键部署
+
+打开 PowerShell（右键开始菜单 → "Windows PowerShell" 或 "终端"），然后执行：
+
+```powershell
+cd 项目目录路径
+.\deploy-all.ps1 -DevelopmentOnly
+```
+
+> 把 `项目目录路径` 替换为你解压后 `registry-center` 文件夹的实际路径。例如：
+> ```powershell
+> cd C:\Users\<YourUsername>\Desktop\registry-center
+> ```
+
+> **如果运行 `.\deploy-all.ps1 -DevelopmentOnly` 报错** "File ... cannot be loaded. The file ... is not digitally signed. You cannot run this script on the current system." / "UnauthorizedAccess"，这是 PowerShell 执行策略（Execution Policy）默认禁止运行未签名脚本导致的。两种解决方法任选其一：
+> - **方法一（推荐，永久生效）**：为当前用户放开执行策略，本地脚本可直接运行，仅网络下载的脚本才需要签名。
+>   ```powershell
+>   Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+>   ```
+>   执行后再运行 `.\deploy-all.ps1 -DevelopmentOnly` 即可。
+> - **方法二（仅本次运行生效）**：不修改系统设置，单次绕过执行策略。
+>   ```powershell
+>   powershell -ExecutionPolicy Bypass -File .\deploy-all.ps1 -DevelopmentOnly
+>   ```
+
+运行后会提示你输入：
+1. **GCP Project ID** — 就是前面创建项目时记下的那个 ID
+2. **数据库密码** — 随便设一个，或者直接回车让系统自动生成
+
+然后脚本会全自动完成：
+- ✓ 创建数据库（Cloud SQL PostgreSQL）
+- ✓ 构建 Docker 镜像
+- ✓ 部署到 Cloud Run
+
+
+**提示**：如果非首次部署，在创建数据库阶段出现ALREADY_EXISTS的报错时，这是正常的，不用进行任何操作。
+![alt text](./images/db_already_exists_fig.png)
+
+**全程大约 10-15 分钟**，看到 `DEPLOYMENT SUCCESSFUL!` 就成功了。
+
+![alt text](./images/deploy_success_fig.png)
+---
+
+## 验证部署
+
+脚本最后会输出一个 `https://xxxxx.run.app` 的地址，这是你的服务 URL。
+
+请使用具有 Cloud Run 调用权限的 IAM 身份令牌；匿名浏览器访问会被平台拒绝。
+认证后返回 `{"agentCards":[]}` 表示服务正常运行且还没有注册 Agent。
+
+或者用 PowerShell 测试：
+
+```powershell
+$identityToken = gcloud auth print-identity-token
+Invoke-RestMethod -Uri "https://xxxxx.run.app/rest/v1/registry-center/agent-cards" -Headers @{ Authorization = "Bearer $identityToken" }
+```
+
+---
+
+## 配置模型文件
+
+`etc/config/models.yaml` 刻意不打进镜像（已在 `.dockerignore` 中排除），因此新建的容器没有模型
+定义。服务仍会正常启动并提供接口；请求实际需要但模型不可用时返回 HTTP 503。
+候选集为空时可以不调用模型，直接返回 `{"agentCards":[]}`。
+
+提供该文件有两种方式：
+
+1. **Docker Compose** — `docker-compose.yml` 会挂载
+   `${LLM_CONFIG_HOST_FILE:-./etc/config/models.yaml}`，把完整文件放在该路径即可。
+2. **Cloud Run** — 容器入口脚本（`bin/entrypoint.sh`）会在服务启动前，把环境变量转成**不含密钥**的
+   `models.yaml`：
+
+   ```powershell
+   gcloud run services update registry-center --region=asia-east1 --project="YOUR_PROJECT_ID" --update-env-vars="LLM_CHAT_MODEL=deepseek-chat,LLM_CHAT_URL=https://api.deepseek.com/v1/chat/completions"
+   ```
+
+   通过部署平台的密钥机制注入 `LLM_CHAT_API_KEY`；不要把真实密钥写进命令或 Shell 历史。
+
+生成的条目包含 `provider: openai_compatible`、`model`、`url`，并且**仅当**密钥变量存在时才写入
+`api_key_env: LLM_CHAT_API_KEY`——密钥值本身从不落盘。已存在的 `models.yaml` 不会被覆盖，因此挂载的
+文件总是优先。该简化方式只生成 `chat` 能力：需要 `embed` 时请提供完整的 `models.yaml`（自定义镜像或
+挂载卷）。只设置 `LLM_CHAT_MODEL` / `LLM_CHAT_URL` 之一，或指定 `aoc_signed` 等 provider，容器会直接
+报错退出，而不是带着半套配置启动。字段说明见 [LLM 配置参考](../../etc/config/README_zh.md)。
+
+---
+
+## API 接口
+
+部署成功后你可以通过以下接口管理 Agent 卡片：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/rest/v1/registry-center/agent-cards` | 注册 Agent |
+| `GET` | `/rest/v1/registry-center/agent-cards` | 查询 Agent |
+| `GET` | `/rest/v1/registry-center/agent-cards/{org}/{name}` | 获取单个 Agent |
+| `PUT` | `/rest/v1/registry-center/agent-cards/{org}/{name}` | 更新 Agent |
+| `DELETE` | `/rest/v1/registry-center/agent-cards/{org}/{name}` | 注销 Agent |
+
+示例（注册一个 Agent）：
+
+```powershell
+$body = @{
+    name = "my-agent"
+    description = "A test agent"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "https://xxxxx.run.app/rest/v1/registry-center/agent-cards" -Method Post -Body $body -ContentType "application/json"
+```
+
+---
+
+## 常见问题
+
+**Q: 脚本报错 "gcloud not found"？**
+
+关掉 PowerShell 重新打开。如果还不行，说明 gcloud 没装好，回到第 1 步。
+
+**Q: 看到 "API has not been used" 错误？**
+
+等 1-2 分钟再运行 `.\deploy-all.ps1 -DevelopmentOnly`，有些 API 启用需要时间。
+
+**Q: 部署失败怎么重试？**
+
+直接再跑一次 `.\deploy-all.ps1 -DevelopmentOnly` 就行，已创建的资源会被自动跳过。
+
+**Q: 如何更新服务？**
+
+修改代码后，再跑一次 `.\deploy-all.ps1 -DevelopmentOnly` 即可更新。
+
+**Q: 如何关掉服务？**
+
+```powershell
+gcloud run services delete registry-center --region=asia-east1
+gcloud sql instances delete registry-center-db
+```
+
+**Q: 费用大概多少？**
+
+- Cloud Run：无请求时不收费。按请求计费。
+- Cloud SQL（db-f1-micro）：约 $0.015/小时。
+
+不使用时删除 Cloud SQL 实例即可节省费用，数据需要提前备份。

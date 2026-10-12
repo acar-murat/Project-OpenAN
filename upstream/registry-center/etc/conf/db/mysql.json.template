@@ -1,0 +1,10 @@
+{
+  "host": "127.0.0.1",
+  "port": 3306,
+  "database": "registry_center",
+  "user": "a2a_user",
+  "password_env": "MYSQL_PASSWORD",
+  "pool_min": 5,
+  "pool_max": 20,
+  "connect_timeout": 10
+}

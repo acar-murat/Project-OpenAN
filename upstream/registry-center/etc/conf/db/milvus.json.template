@@ -1,0 +1,5 @@
+{
+  "uri": "milvus_demo.db",
+  "description": "Milvus DB Service",
+  "version": "milvus-lite"
+}
