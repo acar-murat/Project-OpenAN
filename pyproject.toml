@@ -46,6 +46,7 @@ dev = [
     "types-protobuf>=6.30.0,<7",
     "hypothesis>=6.167.1",
     "trustme>=1.0.0",
+    "protobuf>=6.30.2,<7",
     "mkdocs>=1.6.1",
     "mkdocstrings-python>=2.0.8",
     "mkdocs-material>=9.7.7",
@@ -112,4 +113,12 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 
+
+
+[[tool.mypy.overrides]]
+# Optional runtime dependencies: the otlp exporter packages live in the
+# observability extra (installed in dev, absent in default CI sync). Imports
+# are runtime-guarded in setup.py.
+module = "opentelemetry.exporter.*"
+ignore_missing_imports = true
 

@@ -28,7 +28,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Install SDK dependencies
-        run: uv sync --frozen --extra observability
+        run: uv sync --frozen
 
       - name: Lint bundled A2A-T templates
         run: uv run python tools/template_lint.py --resource-root src/a2a_t/prompt_resources
@@ -74,7 +74,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Install SDK dependencies
-        run: uv sync --frozen --extra observability
+        run: uv sync --frozen
 
       - name: Lint SDK with ruff
         run: uv run ruff check src tests a2a-t-corpus
@@ -108,7 +108,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Install SDK dependencies
-        run: uv sync --frozen --extra observability
+        run: uv sync --frozen
 
       - name: Install samples dependencies
         run: uv pip install -r a2a-t-sample/requirements.txt
@@ -124,14 +124,6 @@ jobs:
         run: |
           cp env.example .env
           sed -i 's|A2AT_LLM_API_KEY=.*|A2AT_LLM_API_KEY=${{ secrets.A2AT_LLM_API_KEY }}|' .env
-          # Sample e2e verifies the business flow + metric/log signals. Keep the
-          # trace signal off here: a2a-sdk consumes SSE across async contexts so
-          # OTel detach can fail (logged as "ValueError: Token was created in a
-          # different Context") which the error-log scan below would flag as a
-          # business failure; and skip the dev-mode Console exporters (stdout
-          # JSON spam in server.log/client.log).
-          echo "A2AT_TRACE_ENABLED=false" >> .env
-          echo "A2AT_CONSOLE_EXPORTER=false" >> .env
 
       - name: Diagnose .env API_KEY (prefix only)
         working-directory: a2a-t-sample
