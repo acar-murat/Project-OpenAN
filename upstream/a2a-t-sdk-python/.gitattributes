@@ -1,0 +1,61 @@
+# Line ending policy: all text files are stored and checked out with LF.
+# Explicit `eol=lf` overrides any local `core.autocrlf`/`core.eol` settings so
+# every contributor sees identical bytes regardless of platform.
+
+* text=auto
+
+# --- Python ---
+*.py text eol=lf
+*.pyi text eol=lf
+*.pyw text eol=lf
+
+# --- Documentation ---
+*.md text eol=lf
+*.rst text eol=lf
+
+# --- Data & configuration ---
+*.json text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.ini text eol=lf
+*.cfg text eol=lf
+*.txt text eol=lf
+*.env text eol=lf
+*.example text eol=lf
+*.lock text eol=lf
+
+# --- Scripts ---
+*.sh text eol=lf
+*.bash text eol=lf
+*.bat text eol=lf
+*.ps1 text eol=lf
+
+# --- Extension-less text files ---
+.gitignore text eol=lf
+.gitattributes text eol=lf
+.python-version text eol=lf
+CODEOWNERS text eol=lf
+LICENSE text eol=lf
+Dockerfile text eol=lf
+Makefile text eol=lf
+
+# --- Binary: never normalize ---
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.whl binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pyc binary
+*.so binary
+*.dll binary
+*.exe binary

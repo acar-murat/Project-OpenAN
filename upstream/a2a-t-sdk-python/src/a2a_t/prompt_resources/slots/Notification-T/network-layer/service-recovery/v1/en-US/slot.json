@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "subscribe_condition": {
+      "type": "string",
+      "description": "The condition description to be subscribed, used to define subscription constraints such as the subnetwork name.",
+      "examples": [
+        "Subnetwork name: xx subnetwork."
+      ],
+      "x-a2at-value-constraint": "The subscription condition may include the subnetwork name, for example: xx subnetwork."
+    },
+    "notification_data_format": {
+      "type": "string",
+      "description": "The notification data format description to be reported, used to define the service recovery event data structure.",
+      "examples": [
+        "The service recovery event data contains: service recovery plan execution status (not started, ended), complaint diagnosis task sequence number, OSS-side event sequence number, access port name, whether OMC automatic recovery is authorized (yes, no), service recovery plan name, service recovery plan details, service recovery plan execution end time, service recovery plan execution result (success, failure), and service recovery plan execution failure reason."
+      ],
+      "x-a2at-value-constraint": "The reported data type is the service recovery event. The service recovery event data contains the following fields: 1. Service recovery plan execution status, allowed values: not started, ended (required); 2. Complaint diagnosis task sequence number (required); 3. OSS-side event sequence number (required); 4. Access port name (required); 5. Whether OMC automatic recovery is authorized, allowed values: yes, no (required); 6. Service recovery plan name (required); 7. Service recovery plan details (required); 8. Service recovery plan execution end time (optional); 9. Service recovery plan execution result, allowed values: success, failure (optional); 10. Service recovery plan execution failure reason, required when the execution result is failure (optional)."
+    }
+  },
+  "required": ["notification_data_format"]
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "task_object": {
+      "type": "string",
+      "description": "Private line name, access port name, and access port resource ID; provide one of the three parameters to identify the private line service object.",
+      "examples": [
+        "Access port resource ID: f47ac10b-58cc-4372-a567-0e02b2c3d479"
+      ],
+      "x-a2at-value-constraint": "Private line name: the private line object identifier in the network-side EMS NMS. Access port name: the access port name in the network-side EMS NMS, in the format: network element name + board number + board model + port number. Access port resource ID: the access port resource object identifier in the network-side EMS NMS."
+    },
+    "task_context": {
+      "type": "string",
+      "description": "Provide the fault phenomenon description of the private line service and the context information of the diagnosis task.",
+      "examples": [
+        "Fault phenomenon: private line interruption. Fault sequence number: fault-id-1-017-20230511-09013"
+      ],
+      "x-a2at-value-constraint": "Fault phenomenon: includes two scenarios, \"private line interruption\" and \"poor private line quality\". Required parameter. Fault occurrence time. Optional parameter. Fault or event sequence number on the OSS side. Optional parameter."
+    }
+  },
+  "required": [
+    "task_context", "task_object"
+  ]
+}

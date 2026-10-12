@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "operation_type": {
+      "type": "string",
+      "description": "Provide the operation type. Allowed values: Create, Modify.",
+      "examples": [
+        "Create"
+      ],
+      "x-a2at-value-constraint": "Allowed values: Create, Modify"
+    },
+    "task_description": {
+      "type": "string",
+      "description": "Dynamically provide the task description based on the operation type (Create/Modify).",
+      "examples": [
+        "Based on <Task Object> and <Task Context>, output a wireless network energy saving plan that achieves the wireless network energy saving goal defined in <Task Target>, and return the wireless network energy saving result in the format defined in <Expected Output>."
+      ],
+      "x-a2at-value-constraint": "When the type is [Create]: Based on <Task Object> and <Task Context>, output a wireless network energy saving plan that achieves the wireless network energy saving goal defined in <Task Target>, and return the wireless network energy saving result in the format defined in <Expected Output>. When the type is [Modify]: Based on <Task Object> and <Task Context>, output a wireless network energy saving plan that achieves the wireless network energy saving goal defined in <Task Target>."
+    },
+    "task_object": {
+      "type": "string",
+      "description": "Explicitly specify the energy saving coverage scope information, a geographic or logical area (e.g., district-level administrative unit). The area information is a required parameter.",
+      "examples": [
+        "The area is the Songshanhu Administration Committee."
+      ],
+      "x-a2at-value-constraint": "Area name. The area information (important) must be a concrete physical address, for example a real physical community such as \"Songshanhu Administration Committee\", rather than a description without a specific physical location such as \"all communities\", \"indoor communities\", or \"outdoor communities\"."
+    },
+    "task_target": {
+      "type": "string",
+      "description": "Define the quantitative or qualitative goals the task must achieve. Quantitative and qualitative goals cannot be selected at the same time, and the default is a qualitative goal.",
+      "examples": [
+        "Energy consumption goal: 30%"
+      ],
+      "x-a2at-value-constraint": "1. Quantitative goal - Energy consumption goal: the gain target of energy saving. The target value format must be a percentage, such as the percentage by which total power consumption is reduced. 2. Qualitative goal - Maximize energy saving under the conditions defined in the task context."
+    },
+    "task_context": {
+      "type": "string",
+      "description": "Provide the background and context information for task execution.",
+      "examples": [
+        "Cell RAT for energy saving: NR; Energy saving time range: start time \"08:00:00\", end time \"12:00:00\"; Time-segmented rate guarantee goal: {00:00~06:00,2Mbps}, {06:00~18:00,10Mbps}."
+      ],
+      "x-a2at-value-constraint": "1. Cell radio access technology for energy saving (LTE/NR/all) 2. The time range for executing energy saving, recurring daily; if omitted, energy saving is performed for the full period, and the rate goal is guaranteed only within the energy saving enabled time range 3. Carrier frequencies that can be turned off during energy saving 4. Rate guarantee goal: the minimum downlink throughput target that must be guaranteed and its effective time period (area-level supports time-segmented/full-period; for time periods without a rate guarantee goal set, experience-lossless energy saving is adopted by default, with a maximum of three rate values; site-level requires site list, time-segmented rate guarantee goal, and optional background event and duration)"
+    },
+    "expected_output": {
+      "type": "string",
+      "description": "When the task object is a geographic/logical area, output the intent report for the network energy saving task.",
+      "examples": [
+        ""
+      ],
+      "x-a2at-value-constraint": "Basic information about the intent execution result: area, intent goal achievement status. Detailed information about the intent execution result: energy saving gain achievement status (current energy saving gain goal, actual energy saving gain percentage, target adjustment suggestions), rate goal achievement status (current rate goal, actual rate, target adjustment suggestions)."
+    }
+  },
+  "required": ["operation_type", "task_object", "task_description"]
+}

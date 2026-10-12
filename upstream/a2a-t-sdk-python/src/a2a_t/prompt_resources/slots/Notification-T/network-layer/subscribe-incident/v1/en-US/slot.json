@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "notification_topic": {
+      "type": "string",
+      "description": "The name of the notification topic to be subscribed, used to define the subscription target.",
+      "examples": [
+        "Incident"
+      ],
+      "x-a2at-value-constraint": "The specific topic name can be: Incident, Fault, intelligent fault, fault, etc."
+    },
+    "subscribe_condition": {
+      "type": "string",
+      "description": "The condition description to be subscribed, used to define subscription constraints such as fault name and fault severity.",
+      "examples": [
+        "Fault priority: critical, high. Fault name: fiber break, board fault.",
+        "Fault priority: high, medium. Fault name: board fault, main control board abnormal, port abnormal."
+      ],
+      "x-a2at-value-constraint": "The subscription condition may include fault priority and fault name. Fault priority supports a list form. Priority semantics support synonymous Chinese/English expressions; a match on either the Chinese or English term is considered valid: urgent/critical, high/high, medium/medium, low/low. Fault name supports a list form, with allowed values being the list of network-side fault names, for example: pigtail fault, fiber break, board fault, optical module fault, etc."
+    },
+    "notification_data_format": {
+      "type": "string",
+      "description": "The notification data format description to be reported, used to define the data type and carrying format.",
+      "examples": [
+        "Report Incident data via DataPart."
+      ],
+      "x-a2at-value-constraint": "May describe the reported data type and carrying Part. The data type can be Incident, fault, etc.; the carrying format can be an A2A Part, such as DataPart or TextPart."
+    }
+  },
+  "required": []
+}

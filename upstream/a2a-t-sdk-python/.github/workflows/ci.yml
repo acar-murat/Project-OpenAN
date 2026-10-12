@@ -1,0 +1,201 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show git info
+        run: |
+          echo "commit: $(git rev-parse HEAD)"
+          echo "branch: $(git branch --show-current)"
+          git log --oneline -3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install SDK dependencies
+        run: uv sync --frozen
+
+      - name: Lint bundled A2A-T templates
+        run: uv run python tools/template_lint.py --resource-root src/a2a_t/prompt_resources
+
+      - name: Install samples dependencies
+        run: uv pip install -r a2a-t-sample/requirements.txt
+
+      - name: Register samples src path
+        run: |
+          src=$(cd a2a-t-sample/fault-management/src && pwd)
+          venv_site=$(.venv/bin/python -c "import site; print(site.getsitepackages()[0])")
+          echo "$src" > "$venv_site/samples.pth"
+
+      - name: Run SDK tests
+        # The live-LLM families (D24 live corpus and the a2a-t-corpus accuracy workflows) are
+        # opt-in through A2AT_* secrets this job does not provide; -m 'not live' deselects them so
+        # CI stays offline-deterministic. The corpus structural self-guard carries no live marker
+        # and runs here as the corpus format gate.
+        run: uv run pytest tests/ a2a-t-corpus -v --tb=short -m 'not live'
+
+      - name: Run samples tests
+        run: uv run pytest a2a-t-sample/fault-management/test/ a2a-t-sample/negotiation/test/ -v --tb=short
+
+  lint:
+    name: Lint + Type-check (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show git info
+        run: |
+          echo "commit: $(git rev-parse HEAD)"
+          echo "branch: $(git branch --show-current)"
+          git log --oneline -3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install SDK dependencies
+        run: uv sync --frozen
+
+      - name: Lint SDK with ruff
+        run: uv run ruff check src tests a2a-t-corpus
+
+      - name: Lint samples with ruff
+        working-directory: a2a-t-sample
+        run: uv run ruff check fault-management/src fault-management/test negotiation/src negotiation/test
+
+      - name: Type-check with mypy
+        run: uv run mypy src
+
+  e2e-test:
+    name: E2E Samples Test
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show git info
+        run: |
+          echo "commit: $(git rev-parse HEAD)"
+          echo "branch: $(git branch --show-current)"
+          git log --oneline -3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install SDK dependencies
+        run: uv sync --frozen
+
+      - name: Install samples dependencies
+        run: uv pip install -r a2a-t-sample/requirements.txt
+
+      - name: Register samples src path
+        run: |
+          src=$(cd a2a-t-sample/fault-management/src && pwd)
+          venv_site=$(.venv/bin/python -c "import site; print(site.getsitepackages()[0])")
+          echo "$src" > "$venv_site/samples.pth"
+
+      - name: Create .env
+        working-directory: a2a-t-sample
+        run: |
+          cp env.example .env
+          sed -i 's|A2AT_LLM_API_KEY=.*|A2AT_LLM_API_KEY=${{ secrets.A2AT_LLM_API_KEY }}|' .env
+
+      - name: Diagnose .env API_KEY (prefix only)
+        working-directory: a2a-t-sample
+        shell: bash
+        run: |
+          line=$(grep 'A2AT_LLM_API_KEY=' .env)
+          value=${line#A2AT_LLM_API_KEY=}
+          len=${#value}
+          if [ "$len" -eq 0 ]; then
+            echo "::notice::A2AT_LLM_API_KEY is empty, e2e will use mock LLM responses"
+            echo "raw line: [$line]"
+          else
+            prefix=$(echo "$value" | cut -c1-12)
+            echo "A2AT_LLM_API_KEY length=$len prefix=$prefix..."
+          fi
+
+      - name: Start services
+        working-directory: a2a-t-sample
+        run: |
+          nohup uv run python -m agentcard_example.registry_main > registry.log 2>&1 &
+          echo $! > registry.pid
+          sleep 2
+          nohup uv run python -m server_example.server_main > server.log 2>&1 &
+          echo $! > server.pid
+          sleep 3
+
+      - name: Run e2e client
+        working-directory: a2a-t-sample
+        shell: bash
+        env:
+          A2AT_SAMPLE_MAX_ARTIFACTS: "5"
+        run: |
+          uv run python -m client_example.client_main 2>&1 | tee client.log
+          artifact_count=$(grep -oP 'artifacts=\K[0-9]+' client.log | tail -1)
+          echo "e2e artifacts received: $artifact_count"
+          if [ -z "$artifact_count" ] || [ "$artifact_count" -eq 0 ]; then
+            echo "::error::e2e failed: no artifacts received"
+            exit 1
+          fi
+          echo "e2e PASSED"
+
+      - name: Show logs
+        if: always()
+        working-directory: a2a-t-sample
+        run: |
+          echo "=== registry.log ===" && cat registry.log 2>/dev/null || true
+          echo "=== server.log ===" && cat server.log 2>/dev/null || true
+          echo "=== client.log ===" && cat client.log 2>/dev/null || true
+
+      - name: Check logs for errors
+        if: always()
+        working-directory: a2a-t-sample
+        shell: bash
+        run: |
+          has_error=false
+          for log_file in server.log client.log; do
+            if [ -f "$log_file" ]; then
+              errors=$(grep -E '^Traceback|^[A-Za-z].*Error:|^a2a\.|RuntimeError|HTTPStatusError' "$log_file" || true)
+              if [ -n "$errors" ]; then
+                echo "::error::Errors found in $log_file:"
+                echo "$errors"
+                has_error=true
+              fi
+            fi
+          done
+          if [ "$has_error" = "true" ]; then
+            exit 1
+          fi
+
+      - name: Cleanup
+        if: always()
+        working-directory: a2a-t-sample
+        run: |
+          kill $(cat registry.pid 2>/dev/null) 2>/dev/null || true
+          kill $(cat server.pid 2>/dev/null) 2>/dev/null || true
