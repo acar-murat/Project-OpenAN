@@ -1,0 +1,149 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+
+"""Auth manager - builds interceptors from AgentCard, self-contained."""
+
+from typing import Dict, Any, List, Optional
+from loguru import logger
+
+try:
+    from a2a.client.interceptors import ClientCallInterceptor, BeforeArgs, AfterArgs
+    _A2A_AUTH_AVAILABLE = True
+except ImportError:
+    _A2A_AUTH_AVAILABLE = False
+    ClientCallInterceptor = None
+    BeforeArgs = None
+    AfterArgs = None
+
+
+from workflow_engine.client.credential_service import AgentAuthManager, CustomAuthInterceptor
+from workflow_engine.client.extension_interceptor import ExtensionInterceptor
+from workflow_engine.client.auth_provider import AuthProvider
+from workflow_engine.client.protocol_logger import register_sensitive_header
+
+
+class AuthManager:
+    """Builds auth/extension interceptors from AgentCard securitySchemes."""
+
+    def __init__(self, agent_cards: List[Any], credentials_config: Optional[str | Dict] = None,
+                 credential_encryption_key: Optional[str] = None):
+        self._interceptors: Dict[str, List[Any]] = {}
+        self._auth_manager: Optional[AgentAuthManager] = None
+
+        if not _A2A_AUTH_AVAILABLE:
+            logger.info("[AuthManager] a2a-sdk auth not available, authentication disabled")
+            return
+        logger.info(f"[AuthManager] Initializing with {len(agent_cards)} agent card(s), config={credentials_config is not None}")
+
+        if credentials_config is not None:
+            if isinstance(credentials_config, str):
+                self._auth_manager = AgentAuthManager(
+                    config_path=credentials_config,
+                    credential_encryption_key=credential_encryption_key,
+                )
+            elif isinstance(credentials_config, dict):
+                self._auth_manager = AgentAuthManager(
+                    config=credentials_config,
+                    credential_encryption_key=credential_encryption_key,
+                )
+            else:
+                raise TypeError("credentials_config must be a file path or mapping")
+        else:
+            self._auth_manager = AgentAuthManager(
+                credential_encryption_key=credential_encryption_key,
+            )
+
+        self._build_interceptors(agent_cards)
+
+    def _build_interceptors(self, agent_cards: List[Any]):
+        if not self._auth_manager:
+            logger.info("[AuthManager] No auth manager, skipping interceptor build")
+            return
+        for card in agent_cards:
+            if not hasattr(card, "name"):
+                continue
+            interceptors = []
+            cred_svc = None
+            if card.security_schemes and card.security_requirements:
+                cred_svc = self._auth_manager.get_service(card.name)
+            else:
+                logger.info(f"[AuthManager] Agent {card.name}: no security schemes, skipping auth")
+                if not (getattr(card, "capabilities", None) and card.capabilities.extensions):
+                    continue
+            if cred_svc is not None:
+                logger.info(f"[AuthManager] Agent {card.name}: credentials found")
+                agent_cfg = self._auth_manager.get_config(card.name) or {}
+                interceptors.append(CustomAuthInterceptor(cred_svc, agent_cfg))
+                logger.info(f"[AuthManager] Agent {card.name}: configured with {type(interceptors[0]).__name__}")
+            if getattr(card, "capabilities", None) and card.capabilities.extensions:
+                ext_uris = [ext.uri for ext in card.capabilities.extensions if ext.uri]
+                if ext_uris:
+                    interceptors.append(ExtensionInterceptor(ext_uris))
+            if interceptors:
+                self._interceptors[card.name] = interceptors
+
+    def get_interceptors(self, agent_name: str) -> List[Any]:
+        return self._interceptors.get(agent_name, [])
+
+    def update_agent_cards(self, agent_cards: List[Any]) -> None:
+        """Rebuild card-derived interceptors while retaining credential state."""
+        self._interceptors.clear()
+        self._build_interceptors(agent_cards)
+
+    def has_credentials(self, agent_name: str) -> bool:
+        return bool(
+            self._auth_manager
+            and self._auth_manager.get_config(agent_name)
+        )
+
+    def set_httpx_client(self, client):
+        if self._auth_manager:
+            self._auth_manager.set_httpx_client(client)
+class AuthProviderInterceptor(ClientCallInterceptor if _A2A_AUTH_AVAILABLE else object):
+    """Wraps a custom AuthProvider as an a2a-sdk ClientCallInterceptor.
+
+    Calls ``auth_provider.apply_auth(agent_name, agent_card, headers)`` on
+    every ``before`` to inject auth headers. Mirrors the Java SDK's
+    ``AuthProvider.applyAuth`` being called in buildClientCallContext.
+    """
+    def __init__(self, auth_provider: AuthProvider, agent_name: str):
+        self._auth_provider = auth_provider
+        self._agent_name = agent_name
+
+    async def before(self, args: "BeforeArgs") -> None:
+        agent_card = args.agent_card
+        headers: Dict[str, str] = {}
+        self._auth_provider.apply_auth(self._agent_name, agent_card, headers)
+        if args.context is None:
+            from a2a.client.client import ClientCallContext
+            args.context = ClientCallContext()
+        if args.context.service_parameters is None:
+            args.context.service_parameters = {}
+        for name, value in headers.items():
+            existing = args.context.service_parameters.get(name)
+            if existing is not None and existing != value:
+                raise RuntimeError(
+                    f"Authentication header conflict for agent {self._agent_name}: {name}"
+                )
+            # Everything an AuthProvider contributes is authentication material.
+            register_sensitive_header(name)
+            args.context.service_parameters[name] = value
+        if headers:
+            logger.info(f"[AuthProvider] Injected {len(headers)} header(s) for {self._agent_name}")
+
+    async def after(self, args: "AfterArgs") -> None:
+        pass

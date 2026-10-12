@@ -1,0 +1,133 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+
+"""AES-GCM credential encryption/decryption utility.
+
+Supports encrypted values in credential config files using the ``enc:``
+prefix. The encryption key is host-injected when provided, otherwise read
+from ``A2AT_CRED_KEY`` (32-byte hex string). Mirrors the Java SDK's
+``CredentialCrypto``.
+
+Usage in credentials JSON::
+
+    {"value": "enc:<base64-iv>:<base64-ciphertext>"}
+
+Plaintext values (no ``enc:`` prefix) are returned as-is for backward compat.
+
+Both entry points accept an optional ``aad`` (additional authenticated data)
+that binds a ciphertext to its context -- pass the agent and scheme it belongs
+to so a ciphertext cannot be replayed under a different identity. It defaults
+to ``None`` because the wire format is shared with the Java SDK's
+``CredentialCrypto``: enabling it on one side only would make every existing
+ciphertext undecryptable, so binding must be a coordinated cross-SDK change.
+"""
+
+import os
+import base64
+import secrets
+from typing import Optional
+
+_ENV_KEY = "A2AT_CRED_KEY"
+_PREFIX = "enc:"
+_IV_LENGTH = 12  # 96-bit IV for GCM
+_TAG_LENGTH = 16  # 128-bit auth tag
+
+
+def _resolve_key(explicit_key: Optional[str] = None) -> Optional[str]:
+    """Prefer the host-provided key; retain the environment as a fallback."""
+    if explicit_key is not None:
+        return explicit_key
+    key = os.environ.get(_ENV_KEY)
+    if key:
+        return key
+    return None
+
+
+def decrypt_if_needed(
+    value: Optional[str], aad: Optional[str] = None, *, key_hex: Optional[str] = None,
+) -> Optional[str]:
+    """Decrypt a credential value if it has the ``enc:`` prefix.
+
+    Values without the prefix are returned as-is (plaintext fallback).
+    ``aad`` must match the value used at encryption time.
+    """
+    if not value or not value.startswith(_PREFIX):
+        return value
+    key_hex = _resolve_key(key_hex)
+    if not key_hex or not key_hex.strip():
+        raise RuntimeError(
+            f"Encrypted credential found but {_ENV_KEY} is not configured"
+        )
+    try:
+        encoded = value[len(_PREFIX):]
+        parts = encoded.split(":", 1)
+        if len(parts) != 2:
+            raise ValueError(
+                "Invalid encrypted credential format; expected enc:<iv>:<ciphertext>"
+            )
+        iv = base64.b64decode(parts[0])
+        ciphertext_and_tag = base64.b64decode(parts[1])
+        key_bytes = _decode_key(key_hex)
+        ciphertext = ciphertext_and_tag[:-_TAG_LENGTH]
+        tag = ciphertext_and_tag[-_TAG_LENGTH:]
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        plaintext = AESGCM(key_bytes).decrypt(
+            iv, ciphertext + tag, aad.encode("utf-8") if aad else None
+        )
+        return plaintext.decode("utf-8")
+    except Exception as e:
+        if isinstance(e, (RuntimeError, ValueError)):
+            raise
+        raise RuntimeError("Credential decryption failed") from e
+
+
+def encrypt(
+    plaintext: str, aad: Optional[str] = None, *, key_hex: Optional[str] = None,
+) -> str:
+    """Encrypt a plaintext value using AES-GCM with an explicit or environment key.
+
+    Returns encrypted string in format ``enc:<base64-iv>:<base64-ciphertext>``.
+    Raises RuntimeError if the key env var is not set.
+    """
+    key_hex = _resolve_key(key_hex)
+    if not key_hex or not key_hex.strip():
+        raise RuntimeError(f"{_ENV_KEY} environment variable not set")
+    key_bytes = _decode_key(key_hex)
+    iv = secrets.token_bytes(_IV_LENGTH)
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    ciphertext_and_tag = AESGCM(key_bytes).encrypt(
+        iv, plaintext.encode("utf-8"), aad.encode("utf-8") if aad else None
+    )
+    return (
+        _PREFIX
+        + base64.b64encode(iv).decode("ascii")
+        + ":"
+        + base64.b64encode(ciphertext_and_tag).decode("ascii")
+    )
+
+
+def _decode_key(key_hex: str) -> bytes:
+    """Decode and validate the required 256-bit AES key."""
+    normalized = key_hex.strip()
+    if len(normalized) != 64:
+        raise ValueError(
+            "A2AT_CRED_KEY must contain exactly 64 hexadecimal characters (32 bytes)"
+        )
+    try:
+        return bytes.fromhex(normalized)
+    except ValueError as exc:
+        raise ValueError("A2AT_CRED_KEY contains non-hexadecimal characters") from exc
