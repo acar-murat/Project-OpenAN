@@ -1,0 +1,68 @@
+[
+  {
+    "name": "RAN Agent",
+    "description": "负责无线网络的分析、规划与策略执行。",
+    "provider": {
+      "organization": "Demo",
+      "url": ""
+    },
+    "version": "0.1.0",
+    "iconUrl": "",
+    "skills": [
+      {
+        "id": "analysis-eval",
+        "name": "Analysis and Evaluation",
+        "description": "分析网络负载现状",
+        "tags": [
+          "ran",
+          "analysis"
+        ]
+      },
+      {
+        "id": "plan-design",
+        "name": "Plan Design",
+        "description": "根据网络负载现状及网络保障需求规划网络策略方案",
+        "tags": [
+          "ran",
+          "plan"
+        ]
+      },
+      {
+        "id": "net-exec",
+        "name": "Network Policy Execution",
+        "description": "执行或恢复网络策略",
+        "tags": [
+          "ran",
+          "exec"
+        ]
+      }
+    ],
+    "capabilities": {
+      "pushNotifications": false,
+      "streaming": false,
+      "extensions": [
+        {
+          "uri": "https://projects.tmforum.org/a2aproject/telecommunication/extensions/Task-T/v1",
+          "description": "Extension of structured prompt Task-T requests."
+        },
+        {
+          "uri": "https://projects.tmforum.org/a2aproject/telecommunication/extensions/Negotiation-T/v1",
+          "description": "Extension for A2A-T negotiation text exchange."
+        }
+      ]
+    },
+    "defaultInputModes": [
+      "text"
+    ],
+    "defaultOutputModes": [
+      "text"
+    ],
+    "supportedInterfaces": [
+      {
+        "protocolBinding": "HTTP+JSON",
+        "protocolVersion": "1.0",
+        "url": "http://127.0.0.1:8903"
+      }
+    ]
+  }
+]

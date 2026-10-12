@@ -1,0 +1,64 @@
+# Credentials and DB_* settings come from the untracked .env; config files stay read-only.
+services:
+  orchestration-center:
+    build: .
+    container_name: openan-orchestration-center
+    ports:
+      - "127.0.0.1:${ORCH_PORT:-5001}:${ORCH_PORT:-5001}"
+    volumes:
+      - ./data:/opt/orchestration-center/data
+      - ./etc/ssl:/opt/orchestration-center/etc/ssl:ro
+      - ./log:/opt/orchestration-center/log
+      - type: bind
+        source: ${LLM_CONFIG_HOST_FILE:-./etc/config/models.yaml}
+        target: /opt/orchestration-center/etc/config/models.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+    env_file:
+      - .env
+    environment:
+      ORCH_IP: ${ORCH_IP:-0.0.0.0}
+      ORCH_PORT: ${ORCH_PORT:-5001}
+      ORCH_ENABLE_HTTPS: ${ORCH_ENABLE_HTTPS:-false}
+      ORCH_VERIFY_CLIENT: ${ORCH_VERIFY_CLIENT:-false}
+      ORCH_CLIENT_VERIFY_SERVER: ${ORCH_CLIENT_VERIFY_SERVER:-true}
+      ORCH_FORWARDED_ALLOW_IPS: ${ORCH_FORWARDED_ALLOW_IPS:-127.0.0.1}
+      # The bundled frontend listens on HTTP even when its upstream uses TLS.
+      # Set https explicitly when a public TLS gateway fronts this deployment.
+      ORCH_PUBLIC_SCHEME: ${ORCH_PUBLIC_SCHEME:-http}
+      PERSISTENCE_MODE: ${PERSISTENCE_MODE:-file}
+      AGENT_REGISTRY_URL: ${AGENT_REGISTRY_URL:-http://openan-registry-center:5000}
+    networks:
+      - openan-net
+    healthcheck:
+      test: ["CMD", "python", "-m", "orchestrate.server.healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+  workflow-designer:
+    build: ./workflow-designer
+    container_name: openan-orchestration-center-frontend
+    ports:
+      - "3003:80"
+    environment:
+      BACKEND_HOST: orchestration-center
+      BACKEND_PORT: ${ORCH_PORT:-5001}
+      BACKEND_SCHEME: auto
+      ORCH_ENABLE_HTTPS: ${ORCH_ENABLE_HTTPS:-false}
+      BACKEND_VERIFY_SERVER: ${BACKEND_VERIFY_SERVER:-true}
+      BACKEND_CA_FILE: /etc/nginx/backend-tls/trust.cer
+      BACKEND_CLIENT_CERT: ${BACKEND_CLIENT_CERT:-}
+      BACKEND_CLIENT_KEY: ${BACKEND_CLIENT_KEY:-}
+    volumes:
+      - ${BACKEND_TLS_HOST_DIR:-./etc/frontend_tls}:/etc/nginx/backend-tls:ro
+    depends_on:
+      - orchestration-center
+    networks:
+      - openan-net
+    restart: unless-stopped
+networks:
+  openan-net:
+    external: true

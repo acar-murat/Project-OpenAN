@@ -1,0 +1,105 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+
+from datetime import datetime, timezone
+from enum import Enum
+from typing import List, Optional
+from uuid import uuid4
+
+from pydantic import BaseModel, Field
+
+
+"""
+PSOP (Parallel-Standard Operation Process): Runtime workflow for system execution.
+Defines explicit tasks and their relationships at agent granularity.
+Each task specifies which agent and skill to use.
+"""
+
+class TaskStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCESS = "success"
+    FAILED = "failed"
+
+
+class StepType(str, Enum):
+    ALL_SUCCESS = "AllSuccess"
+    ANY_SUCCESS = "AnySuccess"
+    SELF_LOOP = "SelfLoop"
+
+
+class Task(BaseModel):
+    task_id: str = Field(default_factory=lambda: str(uuid4()), description="Unique task identifier")
+    description: str = Field(..., description="Task description", examples=['Execute energy saving analysis'])
+    agent: str = Field(..., description="Name of the agent executing the task")
+    skill: str = Field(..., description="Skill required to execute the task",
+                       examples=['best_effort_energy_saving', 'extreme_backup_energy_saving'])
+    status: TaskStatus = Field(TaskStatus.PENDING, description="Task execution status")
+
+
+class JumpCondition(BaseModel):
+    step: str = Field(..., description="Target step name")
+    condition: str = Field(..., description="Condition description for jumping")
+
+
+class Step(BaseModel):
+    name: str = Field(..., description="Step identifier", examples=['step1', 'step2'])
+    type: StepType = Field(
+        StepType.ALL_SUCCESS,
+        description="Step success condition - "
+        "AllSuccess (all subtasks succeed), AnySuccess (any subtask succeeds), "
+        "or SelfLoop (the workflow-executing agent handles the task locally "
+        "via onSelfTask, no A2A-T message to itself)",
+        examples=[StepType.ALL_SUCCESS, StepType.ANY_SUCCESS, StepType.SELF_LOOP],
+    )
+    subtasks: List[Task] = Field(..., description="List of subtasks within the step"
+                                                  "no dependencies between subtasks, can be executed in parallel")
+    next: Optional[List[JumpCondition]] = Field(None,
+                                                description="Jump conditions to next steps. List of jump \
+                                                conditions (if empty, unconditional jump)")
+    layer: int = Field(0, description="Orchestration layer. 0 = execution layer (leaf agent, runs independently). "
+                                      "1 = aggregation layer (summarizes upstream outputs). "
+                                      "Values > 1 are treated identically to 1. "
+                                      "If layer > 0 and context_from is not set, "
+                                      "the engine automatically derives predecessors from the graph topology "
+                                      "(steps whose 'next' points to this step).")
+    context_from: Optional[List[str]] = Field(None,
+                                              description="List of step names whose outputs should be provided as "
+                                                          "context to this step's agents. "
+                                                          "Use ['*'] to include ALL predecessors transitively "
+                                                          "(direct + indirect, every ancestor in the DAG). "
+                                                          "If None and layer > 0, only direct predecessors "
+                                                          "are auto-derived from graph edges. "
+                                                          "At runtime the engine respects conditional branches: "
+                                                          "only outputs from steps that actually executed are included.")
+
+
+class PSOP(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()),
+                    description="Unique workflow identifier (auto-generated if not provided)")
+    name: str = Field(..., description="Workflow name", examples=['energy_saving_process', 'fault_diagnosis_process'])
+    description: Optional[str] = Field(None, description="Brief work description, empty by default")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc), description="Creation timestamp")
+    steps: List[Step] = Field(..., description="List of steps in the agent collaboration workflow")
+    related_preflow: Optional[str] = Field(None,
+                                           description="Associated Preflow ID that this PSOP was generated from,\
+                                            empty by default")
+    user_intent: Optional[str] = Field(None,
+                                       description="Original user intent that generated this workflow,\
+                                        empty by default")
+    tags: Optional[List[str]] = Field(default_factory=list, description="Tags for quick filtering")
+    source: Optional[str] = Field(None, description="Creation method: graph_editor, ai_intent, solution_package, template")

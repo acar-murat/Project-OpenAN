@@ -1,0 +1,59 @@
+[
+  {
+    "name": "Assurance Agent",
+    "description": "负责保障策略及其恢复策略的生成。",
+    "provider": {
+      "organization": "Demo",
+      "url": ""
+    },
+    "version": "0.1.0",
+    "iconUrl": "",
+    "skills": [
+      {
+        "id": "strategy-generation",
+        "name": "Strategy Generation",
+        "description": "将赛事保障需求转换为网络需求，包含带宽上下行要求等",
+        "tags": [
+          "assurance",
+          "strategy"
+        ]
+      },
+      {
+        "id": "recovery-delivery",
+        "name": "Recovery Delivery",
+        "description": "恢复保障前网络配置",
+        "tags": [
+          "assurance",
+          "recovery"
+        ]
+      }
+    ],
+    "capabilities": {
+      "pushNotifications": false,
+      "streaming": false,
+      "extensions": [
+        {
+          "uri": "https://projects.tmforum.org/a2aproject/telecommunication/extensions/Task-T/v1",
+          "description": "Extension of structured prompt Task-T requests."
+        },
+        {
+          "uri": "https://projects.tmforum.org/a2aproject/telecommunication/extensions/Negotiation-T/v1",
+          "description": "Extension for A2A-T negotiation text exchange."
+        }
+      ]
+    },
+    "defaultInputModes": [
+      "text"
+    ],
+    "defaultOutputModes": [
+      "text"
+    ],
+    "supportedInterfaces": [
+      {
+        "protocolBinding": "HTTP+JSON",
+        "protocolVersion": "1.0",
+        "url": "http://127.0.0.1:8902"
+      }
+    ]
+  }
+]

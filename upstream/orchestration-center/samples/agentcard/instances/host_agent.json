@@ -1,0 +1,95 @@
+[
+  {
+    "name": "Host Agent",
+    "description": "Host agent: embeds the workflow engine, receives orchestration-center dispatch, loads the PSOP and schedules workflow nodes to dispatched agents.",
+    "provider": {
+      "organization": "Huawei",
+      "url": ""
+    },
+    "version": "0.1.0",
+    "iconUrl": "",
+    "skills": [
+      {
+        "id": "workflow-orchestration",
+        "name": "Workflow Orchestration",
+        "description": "宿主智能体的核心能力：接收自然语言任务意图，检索并加载匹配的工作流定义，按编排计划将各节点任务派发给被调度智能体（支持并行扇出与条件路由），必要时处理协商交互，跟踪执行进度并回传事件流。",
+        "tags": [
+          "orchestration",
+          "dispatch",
+          "workflow"
+        ],
+        "examples": [
+          "## 任务类型(Task Type)\n工作流编排执行\n\n## 任务描述(Task Description)\n将本意图对应的业务流程编排为工作流执行：识别需要参与的被调度智能体，编排并行或条件分支的节点拓扑，逐节点下发任务并跟踪完成情况。\n\n## 预期输出(Expected Output)\n1. 工作流执行结果（成功/失败）\n2. 各节点的执行事件流"
+        ],
+        "inputModes": [
+          "application/json",
+          "text/plain"
+        ],
+        "outputModes": [
+          "application/json",
+          "text/plain"
+        ]
+      },
+      {
+        "id": "result-aggregation",
+        "name": "Result Aggregation",
+        "description": "汇集各被调度智能体返回的执行结果，进行本地综合分析与归纳，生成最终业务结论或报告；该节点由宿主本地处理，不向外部智能体发送消息。",
+        "tags": [
+          "aggregation",
+          "analysis"
+        ],
+        "examples": [
+          "## 任务类型(Task Type)\n结果汇总分析\n\n## 任务描述(Task Description)\n基于上游各节点已完成的执行结果，做本地综合分析与归纳，输出面向业务诉求的最终结论。\n\n## 预期输出(Expected Output)\n1. 综合分析结论或报告"
+        ],
+        "inputModes": [
+          "application/json",
+          "text/plain"
+        ],
+        "outputModes": [
+          "application/json",
+          "text/plain"
+        ]
+      }
+    ],
+    "capabilities": {
+      "pushNotifications": false,
+      "streaming": true,
+      "extendedAgentCard": false,
+      "extensions": [
+        {
+          "uri": "https://projects.tmforum.org/a2aproject/telecommunication/extensions/Task-T/v1",
+          "description": "Extension of structured prompt Task-T requests.",
+          "required": false
+        },
+        {
+          "uri": "https://projects.tmforum.org/a2aproject/telecommunication/extensions/Negotiation-T/v1",
+          "description": "Extension for A2A-T negotiation text exchange.",
+          "required": false
+        },
+        {
+          "uri": "https://projects.tmforum.org/a2aproject/telecommunication/extensions/Authorization-T/v1",
+          "description": "Extension for A2A-T authorization.",
+          "required": false
+        },
+        {
+          "uri": "https://projects.tmforum.org/a2aproject/telecommunication/extensions/Notification-T/v1",
+          "description": "Extension for A2A-T notification push.",
+          "required": false
+        }
+      ]
+    },
+    "defaultInputModes": [
+      "text"
+    ],
+    "defaultOutputModes": [
+      "text"
+    ],
+    "supportedInterfaces": [
+      {
+        "protocolBinding": "HTTP+JSON",
+        "protocolVersion": "1.0",
+        "url": "https://127.0.0.1:8904"
+      }
+    ]
+  }
+]

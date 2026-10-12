@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run unit tests
+        run: pytest tests/ -v --tb=short
+        env:
+          PYTHONPATH: .
+
+  mysql-integration:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-disposable-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=5s --health-timeout=5s --health-retries=30 --health-start-period=30s
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: MySQL storage and real HTTP/HTTPS API tests
+        run: pytest tests/test_mysql_integration.py -v --tb=short
+        env:
+          ORCH_MYSQL_TEST_HOST: 127.0.0.1
+          ORCH_MYSQL_TEST_USER: root
+          ORCH_MYSQL_TEST_PASSWORD: ci-disposable-password
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci-disposable-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -h 127.0.0.1"
+          --health-interval=5s --health-timeout=5s --health-retries=30 --health-start-period=30s
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: PostgreSQL storage and real HTTP/HTTPS API tests
+        run: pytest tests/test_postgres_integration.py -v --tb=short
+        env:
+          ORCH_POSTGRESQL_TEST_HOST: 127.0.0.1
+          ORCH_POSTGRESQL_TEST_USER: postgres
+          ORCH_POSTGRESQL_TEST_PASSWORD: ci-disposable-password
+
+  frontend-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: workflow-designer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm ci
+      - name: Run ESLint
+        run: npm run lint
+      - name: Run unit tests
+        run: npm run test
+      - name: Build
+        run: npm run build
+
+  container-transport:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install httpx
+      - name: Build image and test real HTTP/HTTPS entrypoint
+        run: python tests/container_smoke.py
+
+  frontend-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build frontend and verify the real nginx entrypoint
+        run: python tests/frontend_container_smoke.py

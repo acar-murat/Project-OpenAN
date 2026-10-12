@@ -1,0 +1,71 @@
+[
+  {
+    "name": "RAN Energy Saving Agent",
+    "description": "负责RAN能效优化的自主闭环运行，包括意图探索、意图实现、效果评估与报告。",
+    "provider": {
+      "organization": "Demo",
+      "url": ""
+    },
+    "version": "0.1.0",
+    "iconUrl": "",
+    "skills": [
+      {
+        "id": "ran-es-intent-exploration",
+        "name": "RAN ES Intent Exploration",
+        "description": "评估并确定指定RAN ES意图目标的最佳可能性，考虑当前资源状况和系统能力。",
+        "tags": [
+          "wireless",
+          "energy-saving",
+          "intent"
+        ]
+      },
+      {
+        "id": "ran-es-intent-lifecycle-management",
+        "name": "RAN ES Intent Lifecycle Management",
+        "description": "管理RAN节能意图的生命周期，包括创建、修改、删除、激活、去激活意图，并执行数据采集、分析、解决方案制定与配置。",
+        "tags": [
+          "wireless",
+          "energy-saving",
+          "intent"
+        ]
+      },
+      {
+        "id": "ran-es-intent-reporting",
+        "name": "RAN ES Intent Reporting",
+        "description": "提供意图报告查询、订阅、通知功能，报告意图实现状态、达成值、推荐值及配置修改信息。",
+        "tags": [
+          "wireless",
+          "energy-saving",
+          "reporting"
+        ]
+      }
+    ],
+    "capabilities": {
+      "pushNotifications": false,
+      "streaming": false,
+      "extensions": [
+        {
+          "uri": "https://projects.tmforum.org/a2aproject/telecommunication/extensions/Task-T/v1",
+          "description": "Extension of structured prompt Task-T requests."
+        },
+        {
+          "uri": "https://projects.tmforum.org/a2aproject/telecommunication/extensions/Negotiation-T/v1",
+          "description": "Extension for A2A-T negotiation text exchange."
+        }
+      ]
+    },
+    "defaultInputModes": [
+      "text"
+    ],
+    "defaultOutputModes": [
+      "text"
+    ],
+    "supportedInterfaces": [
+      {
+        "protocolBinding": "HTTP+JSON",
+        "protocolVersion": "1.0",
+        "url": "http://127.0.0.1:8899"
+      }
+    ]
+  }
+]

@@ -1,0 +1,525 @@
+<!--
+Copyright (c) 2026 Huawei Technologies Co., Ltd.
+All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+
+   Licensed under the Apache License, Version 2.0 (the "License"); you may
+   not use this file except in compliance with the License. You may obtain
+   a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+   WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+   License for the specific language governing permissions and limitations
+   under the License.
+-->
+# Orchestration Center User Guide
+
+## 1. Feature Introduction
+
+The Orchestration Center is a visual orchestration platform for multi-agent collaboration. It supports defining invocation relationships and execution flows between Agents through a graphical workflow designer. The backend uses a Python framework to parse workflows and drive Agent collaboration, helping users efficiently build, manage, and run complex Agent collaboration workflows.
+
+### 1.1 Application Scenarios
+
+- **Multi-Agent Collaboration Orchestration**: When business requires multiple agents to collaborate on complex tasks, define invocation relationships and execution order visually.
+- **Workflow Template Management**: Save commonly used collaboration workflows as templates for reuse and sharing.
+- **Intelligent Workflow Generation**: Automatically generate workflow plans based on natural language descriptions or PDF documents, lowering the barrier to orchestration.
+- **Real-Time Process Monitoring**: Execute workflows in streaming mode and push runtime progress in real time for debugging and monitoring.
+
+### 1.2 Capability Scope
+
+The following REST API endpoints are exposed externally:
+
+- **SOP Orchestration API**: Generate PSOP workflows based on natural language SOP text or PDF/TXT/MD files.
+- **Intent Orchestration API**: Automatically plan and generate executable PSOP workflows based on natural language intent descriptions.
+- **Auto Orchestration Execution API**: Automatically retrieve or generate a PSOP based on a task description and execute it, returning SSE streaming execution progress.
+- **Specified PSOP Execution API**: Execute a known workflow by PSOP ID, returning SSE streaming execution progress.
+- **Agent List Query API**: Retrieve all available Agents in the system and their skill information.
+- **Execution Result Query API**: Query the execution result of a workflow by execution ID.
+
+### 1.3 Highlight Features
+
+- **Visual Orchestration**: Provides a graphical workflow designer. Design Agent collaboration workflows by dragging, dropping, and connecting — no coding required.
+- **Multi-Mode Generation**: Supports three workflow creation methods: PDF import, manual orchestration, and natural language generation, accommodating different user preferences.
+- **Intelligent Retrieval**: Retrieve historical workflows based on natural language intent, enabling quick reuse of existing processes.
+- **Real-Time Streaming Execution**: Push execution progress in real time via SSE for frontend display and issue troubleshooting.
+
+### 1.4 Implementation Principles
+
+For the core workflow of the Orchestration Center, see: [OpenAN Quick Start, Section 3.1.4  Core Process Verification](https://github.com/project-openan/docs/blob/main/en/quick_start.md#314-core-flow-verification).
+
+### 1.5 Relationship with Related Features
+
+| Related Feature | Relationship Description |
+| --- | --- |
+| Registry Center | The Orchestration Center retrieves the AgentCard list from the Registry Center to discover available Agents and their capabilities |
+
+## 2. Starting the Service
+
+### 2.1 Prerequisites
+
+- **Node.js**: 20.19 or later
+- **Python**: 3.12 or later (for starting sample Agent services)
+
+### 2.2 Starting the Service
+
+#### 2.2.1 **Start the Registry Center Service**
+
+   All Agent information displayed on the UI is retrieved from the Registry Center. For details, see the [Registry Center User Guide](https://github.com/project-openan/registry-center/blob/main/docs/en/Registry%20Center%20User%20Guide.md).
+
+#### 2.2.2 **Start the Orchestration Center Backend Service**
+
+Method 1: Install the Service Using a Script (Linux)
+
+The Orchestration Center provides the `install_service.sh` script, which supports installing the Orchestration Center as a systemd service for easy service management and automatic startup on boot.
+
+1. Configure Deployment Parameters (Optional)
+
+The script's default configuration file is located at `etc/systemd/deploy.conf`. The following parameters can be modified as needed:
+
+| Parameter Name | Default Value | Description |
+| --- | --- | --- |
+| INSTALL_DIR | /OpenA2A-T/orchestration-center | Service installation directory |
+| PYTHON_PATH | {INSTALL_DIR}/venv/bin/python3 | Python interpreter path |
+| SERVICE_NAME | orchestration-center | systemd service name |
+| INSTALL_DEPS | true | Whether to automatically install dependencies |
+
+2. Create a Virtual Environment
+
+Enter the project directory, create and activate the virtual environment:
+```bash
+cd {install_dir}/orchestration-center
+python3 -m venv venv
+source venv/bin/activate
+```
+
+3. Install the Service
+
+Use the script to install the service (root privileges required):
+```bash
+cd {install_dir}/orchestration-center/bin
+sudo ./install_service.sh install
+```
+
+Supported script commands:
+
+| Command | Description |
+| --- | --- |
+| install | Install the systemd service |
+| uninstall | Remove the systemd service |
+| status | View service status |
+| start | Start the service |
+| stop | Stop the service |
+| restart | Restart the service |
+| enable | Enable automatic startup on boot |
+| disable | Disable automatic startup on boot |
+
+Optional parameters:
+- `--dir=PATH`: Specify the installation directory
+- `--python=PATH`: Specify the Python interpreter path
+- `--no-deps`: Skip dependency installation
+
+Example:
+```bash
+# Specify installation directory and Python path
+sudo ./install_service.sh install --dir=/opt/my-orchestration --python=/usr/bin/python3
+
+# Skip dependency installation (use when dependencies are already manually installed)
+sudo ./install_service.sh install --no-deps
+```
+
+4. Start the Service
+
+After installation is complete, use the following command to start the service:
+```bash
+sudo ./install_service.sh start
+```
+
+Or use the systemctl command:
+```bash
+sudo systemctl start orchestration-center
+```
+
+5. Check Service Status
+
+```bash
+sudo ./install_service.sh status
+```
+
+Or:
+```bash
+sudo systemctl status orchestration-center
+```
+
+6. View Startup Logs
+
+```bash
+journalctl -u orchestration-center -f
+```
+
+If you see `Uvicorn running on http://127.0.0.1:5001`, the startup is successful.
+
+Method 2: Manual Startup (Windows)
+
+1. Create a Virtual Environment
+
+Open a cmd window, enter the project directory, and run:
+```bash
+python -m venv .venv
+```
+
+To specify a Python version:
+```bash
+{actual_python_install_path}/python.exe -m venv .venv
+```
+
+2. Activate the Virtual Environment
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+3. Install Project Dependencies
+```bash
+pip install -r .\requirements.txt
+```
+
+4. Start the Project
+```bash
+python -m orchestrate.start
+```
+
+Method 3: Manual Startup (Linux, non-systemd)
+
+1. Create a Virtual Environment
+```bash
+python3 -m venv myproject_env
+source myproject_env/bin/activate
+```
+
+2. Install Project Dependencies
+```bash
+pip install -r ./requirements.txt
+```
+
+3. Start the Project
+```bash
+nohup python -m orchestrate.start > orchestrate.log 2>&1 &
+```
+
+4. View Startup Logs
+```bash
+tail -f orchestrate.log
+```
+
+#### 2.2.3 **Install Frontend Dependencies and Start**
+
+   Enter the `workflow-designer` directory under the installation directory:
+   ```bash
+   cd {install_dir}/workflow-designer
+   npm install --force
+   npm run dev
+   ```
+#### 2.2.4 **(Optional) Start Sample Agent Service**
+
+   To view the full demo, start the sample Agent service (the Registry Center has no registered Agents by default; this script registers multiple Agents with the Registry Center and starts the corresponding services):
+
+   ```bash
+   cd {install_dir}
+   python -m samples.start_agents_server
+   ```
+#### 2.2.5 **(Optional) Use the One-Click Start Script**
+
+   Enter the `bin` folder under the project directory and run the script (this script automatically starts the frontend service and the sample Agent service):
+
+   ```bash
+cd {install_dir}/bin
+   ./start_samples.sh
+   ```
+## 2.5 Security Configuration
+
+The Orchestration Center supports multiple security configurations depending on your deployment scenario. Choose the appropriate level based on your environment.
+
+### Development Mode (No Security)
+
+For local development and testing, all security features can be disabled:
+
+```ini
+# etc/conf/server.conf
+enable_https=false
+verify_client=false
+access_password=
+persistence_mode=file
+```
+
+No login page, no HTTPS, no certificate required. All API endpoints are open.
+
+### Production Mode (HTTPS + Login)
+
+For deployment behind Nginx (recommended):
+
+1. **Configure Nginx with a CA-signed certificate** (from Let's Encrypt, Alibaba Cloud SSL, or your enterprise CA).
+2. **Enable login authentication** on the backend:
+
+   ```ini
+   # etc/conf/server.conf
+   enable_https=true          # Backend uses HTTPS (optional if behind Nginx)
+   verify_client=false         # No mTLS required for browser access
+   access_password=<sha256_hash>  # Set to enable login
+   persistence_mode=postgresql   # Use database for user management
+   ```
+
+   Generate the password hash:
+   ```bash
+   python generate_access_password.py
+   ```
+
+3. **Users and registration**: When `persistence_mode=postgresql` or `mysql`, the system automatically creates a default `admin` user (password: `OpenAN@2026`) on first startup. Self-registration is disabled by default; set `auth.register.enabled=true` in PostgreSQL/MySQL mode to show the registration link. In `file` mode, registration is not available and only the `access_password` config is used.
+
+### High-Security Mode (mTLS + HTTPS + Login)
+
+For distributed deployments where services communicate over untrusted networks:
+
+```ini
+# etc/conf/server.conf
+enable_https=true
+verify_client=true            # Require client certificates for inbound connections
+client_verify_server=true      # Verify remote server certificates for outbound connections
+access_password=<sha256_hash>
+persistence_mode=postgresql
+```
+
+All services must present valid certificates signed by a trusted CA during TLS handshake. See the [Certificate Generation Guide](#) for cross-team certificate setup.
+
+### Security Configuration Summary
+
+| Config | Development | Production (Nginx) | High Security (Distributed) |
+|--------|------------|-------------------|---------------------------|
+| `enable_https` | false | true | true |
+| `verify_client` | false | false | true |
+| `client_verify_server` | false (local self-signed testing only) | true | true |
+| `access_password` | empty | legacy SHA-256 or versioned bcrypt hash | legacy SHA-256 or versioned bcrypt hash |
+| `persistence_mode` | file | postgresql | postgresql |
+| Registration | N/A | Disabled by default; set `auth.register.enabled=true` to enable | Disabled by default; set `auth.register.enabled=true` to enable |
+| Frontend | HTTP | HTTPS (via Nginx) | HTTPS (via Nginx) |
+| Nginx cert | N/A | CA-signed | CA-signed |
+
+The orchestration center verifies peer TLS certificates by default when connecting to the registry and agents. Set `client_verify_server=false` only for controlled local testing with self-signed certificates. If client credentials are needed, specify their file explicitly with `agent_credentials_file` or the `ORCH_AGENT_CREDENTIALS_FILE` environment variable; the service does not automatically load credentials from samples.
+
+### Generating Self-Signed Certificates
+
+> **Development, testing, and demos only:** this tool is designed for quick startup. Do not use any CA, server certificate, client certificate, or private key it generates in production. Production deployments must use a trusted public or enterprise CA and follow the organization's certificate-management policy.
+
+For development or internal testing:
+
+```bash
+python -m generate_selfsign_cert etc/ssl serverAuth
+```
+
+New TLS certificates include SANs for `DNS:localhost`, `IP:127.0.0.1` and `IP:::1` by default.
+For other endpoints, repeat `--dns` / `--ip` for the actual client-facing names; explicit options replace the default SAN list:
+
+```bash
+python -m generate_selfsign_cert etc/ssl-new serverAuth --dns orch.example.test --ip 192.0.2.10
+```
+
+SANs must match the host in the client URL; IP addresses require `--ip`. Setting CN or trusting a certificate does not fix missing SANs.
+Existing certificates are not updated automatically, and the tool refuses to overwrite certificates or private keys.
+For an existing deployment, generate into a new directory, back up and deploy the matching certificate/key pair, then restart.
+Update client trust material where required; do not overwrite the CA store used to authenticate clients.
+`dataSigning` does not add TLS SANs and rejects CLI SAN options.
+
+This generates RSA 3072-bit certificates that comply with the built-in certificate validator. The command also produces the deployment file names that the configuration expects:
+
+```bash
+python -m generate_selfsign_cert etc/ssl serverAuth --plain-key
+```
+
+| File | Purpose |
+|---|---|
+| `server.cer` / `trust.cer` | Server certificate / trust anchor (same content) |
+| `server_key.pem` | Encrypted private key, decrypted at startup with `cert_pwd` |
+| `cert_pwd` | Key password, written automatically (no trailing newline) |
+| `server_key_nopass.pem` | Unencrypted key (with `--plain-key`), for Nginx and the Host Agent |
+| `server_RSA.cer` / `server_key_RSA.pem` | Copies under the original raw names, kept for compatibility |
+
+The password is entered interactively, never as a shell argument. The backend defaults to
+`etc/ssl/cert_pwd`, matching the generated path. For another directory, configure all four
+`ssl_*` paths explicitly. Existing outputs are never overwritten. The password file is plaintext;
+protect it together with the private keys and use service-account ACLs on Windows.
+
+For separate signing test material, run `python -m generate_selfsign_cert etc/sign_cert dataSigning`.
+This exports `sign.cer`, `sign_key.pem` and `cert_pwd`; it does not enable or change business signing.
+
+For production, use certificates from a trusted CA (Let's Encrypt, Alibaba Cloud SSL, or enterprise CA).
+
+### Cross-Node Deployment and Integration
+
+When a client (for example, the workflow execution engine, or any system calling the orchestration REST API) runs on a different node from this service, complete the following:
+
+**1. Server bind address**
+
+`etc/conf/server.conf` defaults to `ip=127.0.0.1`, which listens on loopback only; other nodes cannot connect. For cross-node deployment, set the actual NIC IP or `0.0.0.0`, and open the service port (default 5001) between the nodes.
+
+**2. Certificate SANs must cover the address clients use**
+
+The host or IP in the client URL must appear in the server certificate SAN (see the generation command above). Note:
+
+- Explicit `--dns` / `--ip` options **replace** the default loopback SAN list; if local access is still required, list `localhost` and `127.0.0.1` explicitly as well;
+- When clients connect by IP (for example, `https://192.0.2.10:5001`), the IP must be added with `--ip`; DNS SANs and IP SANs are not interchangeable.
+
+**3. Client integration with self-signed certificates**
+
+| Approach | Suitable for | Notes |
+|---|---|---|
+| Skip certificate-chain verification (for example, engine-side `sslVerify=false`) | Development / testing | Skips only chain verification. Most clients (Java JDK HttpClient in particular) still perform hostname verification, so the certificate SAN must match the accessed address. The two checks are independent; disabling one does not disable the other |
+| Import the trust certificate and keep verification on | Development / integration testing | Import this service's `trust.cer` into the client trust store and leave certificate verification enabled; use a trusted CA in production |
+
+Importing the trust store on a Java client:
+
+```bash
+keytool -importcert -alias openan-orchestration -file trust.cer \
+    -keystore client-trust.jks -storepass <password> -noprompt
+```
+
+Using the workflow execution engine as the integration example, a cross-node deployment requires updating the engine-side orchestration address (`orchUrl`) to the real service address; when verification is enabled, point the engine's CA certificate path at the trust store above and enable `sslVerify`.
+
+If the server enables mutual TLS (`verify_client=true`), clients must additionally present a client certificate signed by `trust.cer`; otherwise the TLS handshake is rejected, regardless of any client-side verification skipping.
+
+
+## 3. Usage
+
+### 3.1 Prerequisites
+
+- The Registry Center service is started and running normally
+- The Orchestration Center backend service is started and running normally
+- The Orchestration Center frontend service has been successfully started
+- The browser can normally access the Orchestration Center frontend page
+
+### 3.2 Background Information
+
+The Orchestration Center provides three workflow creation methods:
+
+- **PDF Import**: Parse workflow descriptions from PDF documents to automatically generate a workflow
+- **Manual Orchestration**: Visually define workflows by dragging Agent cards onto the canvas and connecting them
+- **Natural Language Generation**: Input a business intent description, and the backend automatically generates the corresponding workflow
+
+When executing a workflow, the system pushes execution progress in real time via SSE (Server-Sent Events), allowing the frontend to display each Agent's request and response in real time.
+
+### 3.3 Usage Limitations
+
+- The current version only supports parsing sections titled "5. Interaction Flow" in PDF documents
+- Workflow IDs are automatically generated upon saving and do not support customization
+- Agents started by the sample script are for demo purposes only; production environments should connect to real Agent services
+
+### 3.4 Operation Steps
+
+1. **Access the Orchestration Center Interface**
+
+   Open a browser and navigate to the frontend URL (e.g., `http://localhost:3003` for development, or `https://your-domain.com` for production).
+
+2. **Login (if authentication is enabled)**
+
+   If `access_password` is configured or database persistence (`postgresql`/`mysql`) is enabled, the login page is displayed. Enter your username and password to access the main interface.
+
+   - Default admin credentials: username `admin`, password `OpenAN@2026` (in PostgreSQL/MySQL mode, the admin user is auto-created on first startup).
+   - To register a new account (PostgreSQL/MySQL mode with `auth.register.enabled=true`), click the registration link on the login page.
+   - In `file` mode, the username is `admin` and the password is the value set in `access_password` (before hashing).
+   - To change the admin password in file mode, regenerate the hash: `python generate_access_password.py`
+
+3. **Configure the Service Address (Optional)**
+
+   If the backend is not accessible at the default address, click the gear icon in the lower-right corner of the login page (or the upper-right corner on the main interface) to configure the backend IP, port, and connection mode (Direct IP or Nginx Gateway).
+
+3. **View the Agent Library**
+
+   The left panel displays the full list of Agents. You can search and filter by Agent name or capability keywords. Click any Agent to view its detailed information in the right panel.
+
+4. **Create a New Workflow**
+
+   - Click the `+` button at the top of the left panel
+   - Select a creation method:
+
+     | Method | Operation Description |
+     | --- | --- |
+     | PDF Import | Upload a PDF file; the system automatically parses and generates a PSOP |
+     | Manual Orchestration | Drag Agent cards from below onto the canvas and define the execution order by connecting them; click a connection to set jump conditions |
+     | Natural Language Generation | Input a business intent description; the backend automatically orchestrates and generates a PSOP |
+
+    **PDF Import:**
+
+    Click the "SolutionPackage Import" option, select a PDF document to upload, and wait for the upload to complete.
+    After uploading, users can edit before saving.
+
+    **Note:** Only SolutionPackage-type PDF files are supported for import. A SolutionPackage is a standard solution package document format defined by TM Forum for describing solutions and interaction flows in the telecommunications industry. Refer to the [TM Forum website](https://www.tmforum.org/search?contentType=Asset&pageIndex=1&searchTerm=an%20l4%20solution%20package) for relevant standard documents and examples.
+
+   **Manual Orchestration:**
+    - Step 1: Add Agent cards:
+     Drag the desired Agent cards from the area below the interface onto the blank canvas area.
+    - Step 2: Configure Agent skills:
+     Click an added Agent card on the canvas, and select the skill item to use from the pop-up options.
+    - Step 3: Add more Agents:
+     Repeat steps 1 and 2 to drag multiple Agents onto the canvas based on business requirements.
+    - Step 4: Connect Agent cards:
+     Hover the mouse over the "small blue dot" on the right side of an Agent card; the cursor will change to a crosshair. Hold down the left mouse button, drag to another Agent card, and release to complete the connection.
+    - Step 5: Configure branch conditions:
+     Click a connection that needs branch configuration, enter the jump condition in the "Branch Configuration" prompt box in the pop-up window, and save. Subsequent execution will follow different branch paths based on different conditions.
+    - Step 6: Save the workflow:
+     After all configuration is complete, click the "Save" button at the top of the canvas to create or update the workflow.
+
+    **Natural Language Generation:**
+
+    Click the "Natural Language Orchestration" option, enter a natural language description in the pop-up input box, and click the "GENERATE" button.
+    The generated PSOP workflow will be displayed in the current window. It is in "Edit" state by default and can be saved directly or modified before saving.
+
+5. **Save the Workflow**
+
+   After completing orchestration, the system either auto-saves or manually triggers a save operation. The returned `workflow_id` can be used for subsequent retrieval and execution.
+
+6. **View Existing Workflows**
+
+   All PSOPs are displayed in the left panel. Use the search box at the top to quickly find them by name. Click any PSOP to view its detailed information in the right panel.
+
+7. **Execute a Workflow**
+- Enter the user intent in the top input box;
+- Click the "Retrieve Workflow" button on the right;
+- Once the system retrieves the corresponding PSOP, the left panel will display that PSOP;
+- The center area will automatically display the workflow for that PSOP;
+- Click the "▶" button to the right of the PSOP in the left panel; the right side of the page will display the workflow execution process in real time.
+
+## 4. FAQ
+
+### 4.1 Why is the Agent library empty on the left after startup?
+
+**Symptom**: After entering the Orchestration Center interface, no Agents are displayed in the left Agent library.
+
+**Possible Causes**:
+
+- The Registry Center service is not started
+- The Orchestration Center backend service is not correctly configured with the Registry Center address
+- The sample Agent service is not started (demo environment)
+
+**Solutions**:
+
+1. Confirm that the Registry Center service has been started normally
+2. Check that the Registry Center address in the Orchestration Center backend configuration file is correct
+3. To view the demo, run `python -m samples.start_agents_server` to start the sample Agent
+
+### 4.2 Why does intent orchestration produce nothing, or semantic search always return empty?
+
+**Symptom**: Intent orchestration fails or generates no PSOP; semantic search / agent matching always returns an empty list.
+
+**Possible Causes**:
+
+- No `chat` capability (needed for intent orchestration and PSOP generation) or `embed` capability (needed for semantic search) is configured, so the backend has no usable LLM
+- The environment variable named by a model entry's secret reference is not set
+
+**Solutions**:
+
+1. Copy `etc/config/models.yaml.example` to `etc/config/models.yaml` and add the `chat` and `embed` entries you need under `models:` (both `model` and `url` are required)
+2. Set the variable each entry names through `api_key_env` in the repository-root `.env` (never write secrets into the model file)
+3. Restart the Orchestration Center so the settings take effect; if it still fails, look for `No model configured for capability 'chat'` in the backend log
+
+See [Development Guide 4.2 LLM Module Configuration Guide](Orchestration%20Center%20Development%20Guide.md) and [`models.yaml.example`](../../etc/config/models.yaml.example) for the full field reference.
