@@ -5,6 +5,7 @@ baseline for the **OpenAN Energy-Saving Function** (LLD US202610010001 v10.2).
 
 ## Documentation
 
+- [Use cases](docs/use-cases.md): the original requirement deck ([pptx](docs/source/Open_AN_UC.pptx)) transcribed, with where the LLD differs from it.
 - [Requirements](docs/requirements.md): functional and non-functional requirements traced to the LLD, open items, and findings from the upstream code.
 - [Development backlog](docs/development-backlog.md): milestones, work items, blockers, and proposed upstream changes.
 

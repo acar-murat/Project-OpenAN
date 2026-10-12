@@ -1,7 +1,9 @@
 # OpenAN Energy-Saving Function — Requirements
 
-**Source:** LLD US202610010001 v10.2 (2026-10-12), derived from the *OpenAN
-Energy-Saving Function Software Design Specification v1.0.0*.
+**Sources:** the original use-case deck ([use-cases.md](use-cases.md),
+[`source/Open_AN_UC.pptx`](source/Open_AN_UC.pptx)) and LLD US202610010001
+v10.2 (2026-10-12), derived from the *OpenAN Energy-Saving Function Software
+Design Specification v1.0.0*. Where the two differ, the requirement says so.
 **Baseline:** the upstream repositories under `upstream/` (see the root README).
 
 Each requirement has an ID (`R-<area>-<n>`), traces to a function point (FP)
@@ -18,12 +20,14 @@ requirements are in [development-backlog.md](development-backlog.md).
 
 ## 1. Scope
 
-**In scope:** a user states an energy-saving intent in natural language; OSS
+**In scope:** use case UC1, electricity price collaboration for energy saving
+(MTN power-band energy saving). A user states an energy-saving intent in natural language; OSS
 validates it and hands it to the Orchestration Center; an Energy Agent fetches
 electricity prices and negotiates feasibility with MAE; MAE executes the
 energy-saving task on the RAN; the user sees progress and a final report.
 
-**Out of scope:** UC2 (price-based battery scheduling); MAE internals (AGLink,
+**Out of scope:** UC2 (lithium battery charge/discharge planning on
+time-of-use prices); MAE internals (AGLink,
 WattSpirit, GreenPulse); role-based orchestration and layer-order enforcement,
 which the platform does not provide.
 
@@ -56,6 +60,10 @@ which the platform does not provide.
 | R-INT-6 | OSS validates the required field `region` (→ Task-T `task_object`) and derives `operation_type` (`Create` / `Modify`) and `task_description`. | ✅ |
 | R-INT-7 | Missing required parameters return status `awaiting_supplement` with the list of missing fields. | ✅ |
 | R-INT-8 | `POST /api/v1/energy-saving/intents/{id}/supplement` merges new fields into the pending intent by `session_id` and writes audit event `parameter_supplement`. | ✅ |
+| R-INT-10 | The intent carries a **time-period schedule**: a list of `{start_hour, end_hour, saving_mode, experience_target}` entries (UC1 input 1). Periods may wrap midnight (e.g. 23–5). | ✅ (deck D-2) |
+| R-INT-11 | `saving_mode` is one of `maximized_energy_saving`, `proactive_energy_saving`, `experience_first`; `experience_target` is one of `none`, `rate_floor` (with a value in Mbps, e.g. 10), `no_degradation`. | ✅ (deck D-3) |
+| R-INT-12 | Validation rejects schedules whose periods overlap or leave hours uncovered; together they must cover 0–23 exactly once. | ✅ |
+| R-INT-13 | The intent carries the planning month the optimization applies to. | 🟡 O-23 |
 | R-INT-9 | Each intent gets a `trace_id`, which is passed to the Orchestration Center and written into every audit event. | ✅ |
 
 ### FP-002 Energy-saving intent negotiation (Medium) — LLD §7.5, §6.2
@@ -76,6 +84,8 @@ which the platform does not provide.
 | R-PRC-1 | The Energy Agent exposes skill `electricity_price_lookup` (input: `region`, optional `date_range`; output: `price_table[]` of `{start_time, end_time, relative_price}`). | ✅ (shape) |
 | R-PRC-2 | Price retrieval goes through an adapter interface, with a stub implementation for development and tests. | ✅ |
 | R-PRC-3 | The production adapter calls the external price API with configured URL, key and timeout (`ENERGY_AGENT_PRICE_API_TIMEOUT_MS`, default 5000). | 🔴 O-1 |
+| R-PRC-5 | The price model supports a **power-band tariff**: a list of `{band_no, min_kw, max_kw, charge, currency, billing_period}` (UC1 input 2; e.g. band 1 = 0.00–0.99 kW → 8,247.66 GHS). The LLD's time-of-use `price_table` stays as a second price type, used by UC2. | 🔴 O-1, O-21 (deck D-1) |
+| R-PRC-6 | Electricity prices and the intent schedule are combined into one A2A-T intent ("integration of electricity price synergy and energy-saving intentions"); the two tables keep their own periods and are not forced to align. | ✅ (deck D-1) |
 | R-PRC-4 | A price API failure ends the workflow `FAILED` with reason `price_api_unavailable`. | ✅ |
 
 ### FP-004 External LLM adaptation (High) — LLD §7.1, §14
@@ -114,6 +124,7 @@ which the platform does not provide.
 |---|---|---|
 | R-RPT-1 | `GET /api/v1/energy-saving/intents/{id}/status` returns `intent_id`, `workflow_state`, `artifacts`, `counter_proposal`, `final_report`, `failure_reason`. | ✅ (shape) |
 | R-RPT-2 | The front-end shows the intent state, any counter-proposal, and the final report. | ✅ |
+| R-RPT-4 | The final report shows, as MAE supplies them: predicted charging band per site, site classification (downgrade / upgrade / grade-stable), traffic-migration actions, and predicted electricity cost before and after. | 🔴 O-11 (deck D-6) |
 | R-RPT-3 | The front-end renders an artifact timeline, with placeholder rendering until the schema is known. | 🔴 O-11 |
 
 ### FP-008 Permission control (Medium) — LLD §7.2
@@ -239,3 +250,6 @@ Option 1 is the simpler fit; the decision is tracked as backlog item ORC-1.
 | O-13 | 🟡 P1 | Registry `layer` string | Platform |
 | O-14 | 🟡 P1 | Decision D-1: autonomous target relaxation | Product |
 | O-15 | 🟡 P1 | Template hosting / SDK version pin (current: 1.1.0, F-9) | Release management |
+| O-21 | 🔴 P0 | Power-band tariff semantics: is the GHS amount a monthly charge per site? Is the band chosen by peak or average kW? How are bands above 4.99 kW handled? Where does the tariff come from (price API or configuration)? | MTN / product |
+| O-22 | 🔴 P0 | How a time-period schedule and a band tariff map onto Task-T `ran-energy-saving/v1` slots (`task_target`, `task_context`), and whether MAE accepts both in one intent | MAE team |
+| O-23 | 🟡 P1 | Planning horizon (month) and how a `region` resolves to the cluster MAE optimizes | MAE team / product |
