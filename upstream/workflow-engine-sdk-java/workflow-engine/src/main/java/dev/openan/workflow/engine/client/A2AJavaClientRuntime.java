@@ -1,0 +1,93 @@
+/*
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * All Rights Reserved.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0 (the License); you may
+ *    not use this file except in compliance with the License. You may obtain
+ *    a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an AS IS BASIS, WITHOUT
+ *    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ *    License for the specific language governing permissions and limitations
+ *    under the License.
+ */
+
+package dev.openan.workflow.engine.client;
+
+import dev.openan.workflow.engine.model.SendMessageResult;
+import java.util.function.Consumer;
+import org.a2aproject.sdk.client.ClientEvent;
+import org.a2aproject.sdk.client.transport.spi.interceptors.ClientCallContext;
+import org.a2aproject.sdk.jsonrpc.common.wrappers.ListTasksResult;
+import org.a2aproject.sdk.spec.AgentCard;
+import org.a2aproject.sdk.spec.ListTasksParams;
+import org.a2aproject.sdk.spec.MessageSendParams;
+import org.a2aproject.sdk.spec.Task;
+
+/**
+ * Runtime seam for sending A2A messages via the a2a-java SDK's {@link
+ * org.a2aproject.sdk.client.Client}.
+ *
+ * <p>The engine's {@link DefaultWorkflowEngineClient} delegates message sending to this runtime
+ * when one is provided (or auto-created). This avoids hand-written HTTP code and reuses the SDK's
+ * transport, SSE parsing, and error handling.
+ *
+ * <p>Custom implementations can replace the wire channel while keeping the engine's task state
+ * machine and authentication contract unchanged.
+ */
+public interface A2AJavaClientRuntime {
+  String CHANNEL_STATE_KEY = "dev.openan.workflow.engine.channel";
+  String TRANSPORT_ACTIVITY_STATE_KEY = "dev.openan.workflow.engine.transportActivity";
+  String NOTIFICATION_CHANNEL = "notification";
+
+  /**
+   * Send a message to an agent and collect the streaming events.
+   *
+   * @param agentCard the target agent's card (from configuration or a registry)
+   * @param params the message send parameters (message, context, metadata)
+   * @param callContext client call context with auth/extension headers
+   * @param eventSink optional callback invoked for each intermediate event (status updates,
+   *     artifact updates, messages). Null = no real-time forwarding.
+   * @param logSink optional log consumer for SDK diagnostics
+   * @return an iterable of {@link ClientEvent} produced by the agent
+   */
+  Iterable<ClientEvent> sendMessage(
+      AgentCard agentCard,
+      MessageSendParams params,
+      ClientCallContext callContext,
+      Consumer<ClientEvent> eventSink,
+      Consumer<String> logSink);
+
+  /** Get a task by ID (A2A GET tasks/{id}). */
+  default Task getTask(AgentCard agentCard, String taskId, ClientCallContext callContext) {
+    throw new UnsupportedOperationException("getTask not supported by this runtime");
+  }
+
+  /** List tasks visible to the authenticated caller (A2A GET tasks). */
+  default ListTasksResult listTasks(
+      AgentCard agentCard, ListTasksParams params, ClientCallContext callContext) {
+    throw new UnsupportedOperationException("listTasks not supported by this runtime");
+  }
+
+  /** Cancel a task by ID (A2A POST tasks/{id}:cancel). */
+  default Task cancelTask(AgentCard agentCard, String taskId, ClientCallContext callContext) {
+    throw new UnsupportedOperationException("cancelTask not supported by this runtime");
+  }
+
+  /** Subscribe to a task stream (A2A POST tasks/{id}:subscribe). */
+  default java.util.concurrent.CompletableFuture<SendMessageResult> subscribeToTask(
+      AgentCard agentCard,
+      String taskId,
+      ClientCallContext callContext,
+      java.util.function.Consumer<ClientEvent> eventSink) {
+    throw new UnsupportedOperationException("subscribeToTask not supported by this runtime");
+  }
+
+  /** Release any cached resources (e.g. HTTP clients). */
+  void close();
+}

@@ -1,0 +1,47 @@
+/*
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * All Rights Reserved.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License"); you may
+ *    not use this file except in compliance with the License. You may obtain
+ *    a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ *    License for the specific language governing permissions and limitations
+ *    under the License.
+ */
+
+package dev.openan.workflow.engine.model;
+
+import java.util.List;
+import java.util.Objects;
+
+/** Business input for evaluating one conditional outgoing edge. */
+public record RouteRequest(
+    String executionId,
+    String stepName,
+    String nextStep,
+    String condition,
+    WorkflowInput workflowInput,
+    List<TaskExecutionResult> currentResults) {
+  /** Creates and validates the immutable request for one nonblank conditional edge. */
+  public RouteRequest {
+    Objects.requireNonNull(executionId, "executionId");
+    Objects.requireNonNull(stepName, "stepName");
+    Objects.requireNonNull(nextStep, "nextStep");
+    Objects.requireNonNull(condition, "condition");
+    Objects.requireNonNull(workflowInput, "workflowInput");
+    Objects.requireNonNull(currentResults, "currentResults");
+    if (executionId.isBlank()) throw new IllegalArgumentException("executionId must not be blank");
+    if (stepName.isBlank()) throw new IllegalArgumentException("stepName must not be blank");
+    if (nextStep.isBlank()) throw new IllegalArgumentException("nextStep must not be blank");
+    if (condition.isBlank()) throw new IllegalArgumentException("condition must not be blank");
+    currentResults = List.copyOf(currentResults);
+  }
+}

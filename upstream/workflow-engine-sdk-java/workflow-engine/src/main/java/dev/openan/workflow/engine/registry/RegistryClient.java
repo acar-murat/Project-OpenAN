@@ -1,0 +1,181 @@
+/*
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * All Rights Reserved.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0 (the License); you may
+ *    not use this file except in compliance with the License. You may obtain
+ *    a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an AS IS BASIS, WITHOUT
+ *    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ *    License for the specific language governing permissions and limitations
+ *    under the License.
+ */
+
+package dev.openan.workflow.engine.registry;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.openan.workflow.engine.client.AgentCardNormalizer;
+import dev.openan.workflow.engine.client.SslContextFactory;
+import dev.openan.workflow.engine.util.SensitiveDataRedactor;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.List;
+import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Optional helper for fetching AgentCards from the Registry Center. Users can use this, or fetch
+ * AgentCards from any other source.
+ */
+public class RegistryClient {
+  private static final Logger log = LoggerFactory.getLogger(RegistryClient.class);
+  private static final ObjectMapper mapper = new ObjectMapper();
+
+  private final String baseUrl;
+  private final HttpClient httpClient;
+  private final java.time.Duration requestTimeout;
+
+  public RegistryClient(String url, boolean sslVerify) {
+    this(url, sslVerify, java.time.Duration.ofSeconds(30));
+  }
+
+  /** Creates a discovery client with a positive deadline for each complete HTTP response. */
+  public RegistryClient(String url, boolean sslVerify, java.time.Duration requestTimeout) {
+    if (requestTimeout == null || requestTimeout.isZero() || requestTimeout.isNegative()) {
+      throw new IllegalArgumentException("requestTimeout must be positive");
+    }
+    this.requestTimeout = requestTimeout;
+    this.baseUrl = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+    HttpClient.Builder clientBuilder =
+        HttpClient.newBuilder()
+            .connectTimeout(java.time.Duration.ofSeconds(30))
+            .followRedirects(HttpClient.Redirect.NEVER);
+    if (!sslVerify) {
+      clientBuilder.sslContext(SslContextFactory.createTrustAll());
+    }
+    this.httpClient = clientBuilder.build();
+  }
+
+  private static RuntimeException requestFailure(String service, int status, String body) {
+    String detail = SensitiveDataRedactor.redact(body).replace("\r", "\\r").replace("\n", "\\n");
+    if (detail.length() > 512) detail = detail.substring(0, 512) + "...";
+    return new RuntimeException(
+        service + " returned " + status + (detail.isBlank() ? "" : ": " + detail));
+  }
+
+  @SuppressWarnings("unchecked")
+  public Map<String, Object> fetchAgentCard(String name) throws Exception {
+    return fetchAgentCard(name, null);
+  }
+
+  @SuppressWarnings("unchecked")
+  public List<Map<String, Object>> fetchAgentCards() throws Exception {
+    String url = baseUrl + "/rest/v1/registry-center/agent-cards";
+    log.info("[Registry] Fetching all agent cards from {}", baseUrl);
+    HttpRequest request =
+        HttpRequest.newBuilder().uri(URI.create(url)).timeout(requestTimeout).GET().build();
+    HttpResponse<String> resp = send(request);
+    if (resp.statusCode() != 200) {
+      throw requestFailure("Registry", resp.statusCode(), resp.body());
+    }
+    Map<String, Object> data = mapper.readValue(resp.body(), Map.class);
+    List<Map<String, Object>> cards =
+        (List<Map<String, Object>>)
+            data.getOrDefault("agentCards", data.getOrDefault("data", List.of()));
+    // Normalize each card's security schemes to a compatible format
+    cards = cards.stream().map(AgentCardNormalizer::normalize).toList();
+    log.info("[Registry] Received {} agent card(s)", cards.size());
+    return cards;
+  }
+
+  public String getBaseUrl() {
+    return baseUrl;
+  }
+
+  @SuppressWarnings("unchecked")
+  public Map<String, Object> fetchAgentCard(String name, String organization) throws Exception {
+    StringBuilder urlBuilder =
+        new StringBuilder(baseUrl)
+            .append("/rest/v1/registry-center/agent-cards?name=")
+            .append(
+                java.net.URLEncoder.encode(
+                    name != null ? name : "", java.nio.charset.StandardCharsets.UTF_8));
+    if (organization != null && !organization.isEmpty()) {
+      urlBuilder
+          .append("&organization=")
+          .append(
+              java.net.URLEncoder.encode(organization, java.nio.charset.StandardCharsets.UTF_8));
+    }
+    String url = urlBuilder.toString();
+    log.info("[Registry] Fetching agent card: name={}, org={}", name, organization);
+    HttpRequest request =
+        HttpRequest.newBuilder().uri(URI.create(url)).timeout(requestTimeout).GET().build();
+    HttpResponse<String> resp = send(request);
+    if (resp.statusCode() != 200) {
+      throw requestFailure("Registry", resp.statusCode(), resp.body());
+    }
+    Map<String, Object> data = mapper.readValue(resp.body(), Map.class);
+    List<Map<String, Object>> cards =
+        (List<Map<String, Object>>)
+            data.getOrDefault("agentCards", data.getOrDefault("data", List.of()));
+    if (cards.isEmpty()) {
+      log.warn("[Registry] Agent card not found: name={}", name);
+      return null;
+    }
+    log.info("[Registry] Agent card found: name={}", name);
+    return AgentCardNormalizer.normalize(cards.get(0));
+  }
+
+  /**
+   * Register or update an AgentCard in the registry.
+   *
+   * @param agentCard the agent card to register (must include name, supportedInterfaces, etc.)
+   * @return the registry response as a Map
+   */
+  @SuppressWarnings("unchecked")
+  public Map<String, Object> registerAgentCard(Map<String, Object> agentCard) throws Exception {
+    String url = baseUrl + "/rest/v1/registry-center/agent-cards";
+    Map<String, Object> payload = Map.of("agentCards", List.of(agentCard));
+    String json = mapper.writeValueAsString(payload);
+    log.info("[Registry] Registering agent card: name={}", agentCard.get("name"));
+    HttpRequest request =
+        HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .timeout(requestTimeout)
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json))
+            .build();
+    HttpResponse<String> resp = send(request);
+    if (resp.statusCode() != 200 && resp.statusCode() != 201) {
+      throw requestFailure("Registry registration", resp.statusCode(), resp.body());
+    }
+    Map<String, Object> result = mapper.readValue(resp.body(), Map.class);
+    log.info("[Registry] Agent card registered: name={}", agentCard.get("name"));
+    return result;
+  }
+
+  private HttpResponse<String> send(HttpRequest request) throws Exception {
+    var response = httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString());
+    try {
+      // Also bound body consumption: a peer may send headers and then stall its body.
+      return response.get(
+          Math.max(1, requestTimeout.toMillis()), java.util.concurrent.TimeUnit.MILLISECONDS);
+    } catch (java.util.concurrent.TimeoutException error) {
+      response.cancel(true);
+      throw new java.net.http.HttpTimeoutException("Registry response deadline exceeded");
+    } catch (InterruptedException error) {
+      response.cancel(true);
+      Thread.currentThread().interrupt();
+      throw error;
+    }
+  }
+}

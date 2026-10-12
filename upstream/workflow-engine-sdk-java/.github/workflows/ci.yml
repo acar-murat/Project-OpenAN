@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    name: Build and Test (workflow-engine, spring-boot-starter)
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build and test core modules
+        run: |
+          mvn -B clean verify \
+            -pl workflow-engine,spring-boot-starter \
+            -am \
+            -DskipTests=false
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-reports
+          path: |
+            workflow-engine/target/surefire-reports/
+            spring-boot-starter/target/surefire-reports/
+          retention-days: 7
+
+  samples-compilation-check:
+    runs-on: ubuntu-latest
+    name: Direct sample release gate
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build and test samples
+        run: mvn -B -pl samples -am verify
+
+      - name: Upload sample test reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: direct-sample-test-reports
+          path: samples/target/surefire-reports/

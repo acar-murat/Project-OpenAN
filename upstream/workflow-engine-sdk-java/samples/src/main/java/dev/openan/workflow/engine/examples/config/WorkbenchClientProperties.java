@@ -1,0 +1,125 @@
+/*
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * All Rights Reserved.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License"); you may
+ *    not use this file except in compliance with the License. You may obtain
+ *    a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ *    License for the specific language governing permissions and limitations
+ *    under the License.
+ */
+package dev.openan.workflow.engine.examples.config;
+
+import dev.openan.workflow.engine.client.WorkflowEngineClientConfig;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+/** Sample workbench outbound-client settings. Vendor-specific settings live separately. */
+@Component
+@ConfigurationProperties(prefix = "a2a")
+public class WorkbenchClientProperties {
+  private String orchUrl = "https://127.0.0.1:5001";
+  private String credentialsPath = "";
+  private boolean sslVerify;
+  private String a2atEnvPath = "";
+  private boolean demoNegotiationEnabled;
+  private boolean taskCleanupEnabled = true;
+  private boolean taskCleanupFailFast = true;
+  private int taskCleanupPageSize = 100;
+  private int taskCleanupMaxTasks = 1000;
+  private long notificationAckTimeoutSeconds =
+      WorkflowEngineClientConfig.DEFAULT_NOTIFICATION_ACK_TIMEOUT_SECONDS;
+
+  /**
+   * Internal sample-host setting; SpringSpnDemo supplies its local-only default per application
+   * context.
+   */
+  public boolean isDemoNegotiationEnabled() {
+    return demoNegotiationEnabled;
+  }
+
+  /** Enables missing-input demonstration for this host only, never a JVM-wide switch. */
+  public void setDemoNegotiationEnabled(boolean enabled) {
+    demoNegotiationEnabled = enabled;
+  }
+
+  public String getOrchUrl() {
+    return orchUrl;
+  }
+
+  public void setOrchUrl(String orchUrl) {
+    this.orchUrl = orchUrl;
+  }
+
+  public String getCredentialsPath() {
+    return credentialsPath;
+  }
+
+  public void setCredentialsPath(String credentialsPath) {
+    this.credentialsPath = credentialsPath;
+  }
+
+  public boolean isSslVerify() {
+    return sslVerify;
+  }
+
+  public void setSslVerify(boolean sslVerify) {
+    this.sslVerify = sslVerify;
+  }
+
+  public String getA2atEnvPath() {
+    return a2atEnvPath;
+  }
+
+  public void setA2atEnvPath(String a2atEnvPath) {
+    this.a2atEnvPath = a2atEnvPath;
+  }
+
+  public boolean isTaskCleanupEnabled() {
+    return taskCleanupEnabled;
+  }
+
+  public void setTaskCleanupEnabled(boolean taskCleanupEnabled) {
+    this.taskCleanupEnabled = taskCleanupEnabled;
+  }
+
+  public boolean isTaskCleanupFailFast() {
+    return taskCleanupFailFast;
+  }
+
+  public void setTaskCleanupFailFast(boolean taskCleanupFailFast) {
+    this.taskCleanupFailFast = taskCleanupFailFast;
+  }
+
+  public int getTaskCleanupPageSize() {
+    return taskCleanupPageSize;
+  }
+
+  public void setTaskCleanupPageSize(int taskCleanupPageSize) {
+    this.taskCleanupPageSize = taskCleanupPageSize;
+  }
+
+  public int getTaskCleanupMaxTasks() {
+    return taskCleanupMaxTasks;
+  }
+
+  public void setTaskCleanupMaxTasks(int taskCleanupMaxTasks) {
+    this.taskCleanupMaxTasks = taskCleanupMaxTasks;
+  }
+
+  public long getNotificationAckTimeoutSeconds() {
+    return notificationAckTimeoutSeconds;
+  }
+
+  public void setNotificationAckTimeoutSeconds(long notificationAckTimeoutSeconds) {
+    this.notificationAckTimeoutSeconds = notificationAckTimeoutSeconds;
+  }
+}
