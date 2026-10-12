@@ -1,0 +1,10 @@
+a2a-sdk==1.1.0
+httpx>=0.28.1
+protobuf>=6.30.2,<7
+python-dotenv>=1.1.0
+sse-starlette>=3.4.4
+starlette>=0.47.0
+uvicorn>=0.34.2
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+ruff>=0.3.0

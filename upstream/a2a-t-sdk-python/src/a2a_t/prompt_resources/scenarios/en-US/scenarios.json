@@ -1,0 +1,34 @@
+{
+  "scenarios": [
+    {
+      "scenario_code": "subscribe-incident",
+      "scenario_name": "Incident Event Subscription",
+      "description": "Used to generate an A2A-T task request for subscribing to Incident events in a telecom network management system, describing the subscription target, conditions, and reporting method for network-side faults, alarms, or Incident notifications.",
+      "example": "Help me generate an Incident subscription task: subscribe to fiber break and pigtail fault for base station equipment, only critical and high severity, reported via DataPart."
+    },
+    {
+      "scenario_code": "ran-energy-saving",
+      "scenario_name": "Energy Efficiency Optimization Task",
+      "description": "Used to generate an A2A-T task request for an energy efficiency optimization task in a telecom network management system.",
+      "example": "Achieve a 30% energy consumption reduction in the Songshanhu area while ensuring the rate guarantee is no less than 50Mbps."
+    },
+    {
+      "scenario_code": "private-line-complaint",
+      "scenario_name": "Private Line Complaint",
+      "description": "Used to generate an A2A-T task request for network-side fault root cause diagnosis in a private line complaint scenario in a telecom network management system.",
+      "example": "Please confirm the root cause of fault fault-id-1-328-20260510-58489 that occurred on the Guangdong enterprise private line at 2026-05-10T18:25:30Z, and provide repair suggestions."
+    },
+    {
+      "scenario_code": "service-recovery",
+      "scenario_name": "Service Recovery Event Subscription",
+      "description": "Used to generate an A2A-T task request for subscribing to service recovery events in a telecom network management system, describing the subscription condition and the notification data format for network-side service recovery events.",
+      "example": "Help me subscribe to service recovery events: only for the xx subnetwork, and report the recovery plan execution status, diagnosis sequence number, access port, and execution result in each event."
+    },
+    {
+      "scenario_code": "ran-intelligent-backup-battery-endurance",
+      "scenario_name": "Wireless Intelligent Backup Power Management",
+      "description": "Used to generate an A2A-T task request for wireless intelligent backup power management in a telecom network management system, covering tiered power-down, backup power endurance duration targets, and restoration tasks.",
+      "example": "Create a wireless intelligent backup power task: site Longyan Xinluo Crystal Lanting-HRHH, backup power endurance duration target 4h, cell 460-00-2136088-511 Critical Protection, cell 460-00-2136088-513 Key."
+    }
+  ]
+}

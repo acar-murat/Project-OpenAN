@@ -1,0 +1,34 @@
+{
+  "scenarios": [
+    {
+      "scenario_code": "subscribe-incident",
+      "scenario_name": "Incident 事件订阅",
+      "description": "用于生成电信网管系统中的 Incident 事件订阅类 A2A-T 任务请求，围绕网络侧故障、告警或 Incident 通知的订阅目标、订阅条件和上报方式进行描述。",
+      "example": "帮我生成一个 Incident 订阅任务：订阅基站设备的光纤中断和尾纤故障，只看 critical 和 high，通过 DataPart 上报。"
+    },
+    {
+      "scenario_code": "ran-energy-saving",
+      "scenario_name": "能效优化任务下发",
+      "description": "用于生成电信网管系统中 能效优化任务的 A2A-T 任务请求。",
+      "example": "实现松山湖区域30%的能耗降低，同时确保速率保障不低于50Mbps。"
+    },
+    {
+      "scenario_code": "private-line-complaint",
+      "scenario_name": "专线投诉",
+      "description": "用于生成电信网管系统中 专线投诉场景的网络侧故障根因诊断的 A2A-T 任务请求。",
+      "example": "请确认广东政企专线2026-05-10T18:25:30Z发生的故障fault-id-1-328-20260510-58489的根因，并提供修复建议。"
+    },
+    {
+      "scenario_code": "service-recovery",
+      "scenario_name": "业务抢通事件订阅",
+      "description": "用于生成电信网管系统中业务抢通事件订阅类的 A2A-T 任务请求，围绕网络侧业务抢通事件的订阅条件与上报通知数据格式进行描述。",
+      "example": "帮我订阅业务抢通事件：只看xx子网，事件上报时带上抢通方案执行状态、诊断任务流水号、接入端口和执行结果这些信息。"
+    },
+    {
+      "scenario_code": "ran-intelligent-backup-battery-endurance",
+      "scenario_name": "无线智能备电管理",
+      "description": "用于生成电信网管系统中无线智能备电管理类 A2A-T 任务请求，围绕基站分级下电、备电保障续航时长目标和恢复任务进行描述。",
+      "example": "创建无线智能备电任务：站点龙岩新罗水晶澜庭-HRHH，备电保障的续航时长目标4h，小区460-00-2136088-511重保，小区460-00-2136088-513关键。"
+    }
+  ]
+}

@@ -1,0 +1,124 @@
+[build-system]
+requires = ["uv_build>=0.11.3,<0.12.0"]
+build-backend = "uv_build"
+
+[project]
+name = "a2a-t-sdk"
+version = "1.1.0"
+description = "Python A2A SDK for Telecom Scenarios"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+authors = [
+    { name = "A2A SDK Team" },
+]
+keywords = ["a2a", "agent", "telecom", "sdk"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "jsonschema>=4.23.0",
+    "python-dotenv>=1.1.0",
+    "openai",
+]
+
+[project.optional-dependencies]
+observability = [
+    "opentelemetry-api>=1.33.0",
+    "opentelemetry-sdk>=1.33.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.33.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.33.0",
+    "protobuf>=6.30.2,<7",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.3.0",
+    "mypy>=1.9.0",
+    "types-jsonschema>=4.23.0",
+    "types-protobuf>=6.30.0,<7",
+    "hypothesis>=6.167.1",
+    "trustme>=1.0.0",
+    "protobuf>=6.30.2,<7",
+    "mkdocs>=1.6.1",
+    "mkdocstrings-python>=2.0.8",
+    "mkdocs-material>=9.7.7",
+    "opentelemetry-sdk>=1.33.0",
+]
+integration = [
+    "a2a-sdk>=1.1.0,<2",
+    "httpx>=0.28.1",
+    "opentelemetry-sdk>=1.33.0",
+    "starlette>=0.47.0",
+    "sse-starlette>=3.4.4",
+    "uvicorn>=0.30.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/project-openan/a2a-t-sdk-python"
+Documentation = "https://github.com/project-openan/a2a-t-sdk-python#readme"
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
+[tool.uv.build-backend]
+module-name = "a2a_t"
+source-exclude = [".gitignore"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "a2a-t-corpus"]
+# The accuracy-verification corpus module resolves its engine package from this path.
+pythonpath = ["a2a-t-corpus"]
+# Kept deliberately: the a2a-t-sample async tests run under this root config in CI
+# (pytest-asyncio comes in with a2a-t-sample/requirements.txt); the local SDK-only
+# venv just warns about the unknown option.
+asyncio_mode = "auto"
+addopts = "-p no:cacheprovider"
+markers = [
+    # Live-LLM engines (D24 live family and the a2a-t-corpus accuracy workflows): opt-in
+    # through the A2AT_* environment variables; CI excludes them with -m 'not live'.
+    "live: live-LLM tests against a real OpenAI-compatible endpoint (skipped/deselected when unconfigured)",
+    "a2a: integration tests requiring a2a-sdk (opt-in via A2AT_TEST_A2A=1)",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["E402", "E501"]
+# The corpus loader's raw-record dataclasses mirror the camelCase corpus JSON keys verbatim
+# (D21 strict binding: the field name IS the corpus key), and CorpusLoadException keeps the
+# Java exception name for cross-repo parity.
+"tests/corpus/loader.py" = ["N815", "N818"]
+"a2a-t-corpus/engine/loader.py" = ["N818"]
+# The CSV bridge tools are shared verbatim with the Java repository; keep them untouched.
+"a2a-t-corpus/tools/**" = ["E501", "W292"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+
+
+[[tool.mypy.overrides]]
+# Optional runtime dependencies: the otlp exporter packages live in the
+# observability extra (installed in dev, absent in default CI sync). Imports
+# are runtime-guarded in setup.py.
+module = "opentelemetry.exporter.*"
+ignore_missing_imports = true
+

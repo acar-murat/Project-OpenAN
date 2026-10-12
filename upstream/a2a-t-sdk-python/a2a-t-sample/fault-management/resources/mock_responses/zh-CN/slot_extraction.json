@@ -1,0 +1,8 @@
+{
+  "slots": {
+    "通知主题": "Incident",
+    "订阅条件": "订阅级别为critical的ETH-LOS的故障",
+    "上报通知数据格式": "DataPart"
+  },
+  "slot_errors": []
+}
