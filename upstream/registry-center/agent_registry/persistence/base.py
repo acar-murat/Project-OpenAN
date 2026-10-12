@@ -1,0 +1,210 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+
+from abc import ABC, abstractmethod
+from typing import List, Optional, Dict, Any
+from dataclasses import dataclass, field
+
+from a2a.types import AgentCard
+from agent_registry.model.agent_layer import UNKNOWN_LAYER, LAYER_UNSET
+from agent_registry.model.tag import Tag
+
+
+@dataclass
+class AgentRecord:
+    agent_card: AgentCard
+    owner: Optional[str] = None
+    status: str = 'published'
+    created_at: str = ''
+    updated_at: str = ''
+    tags: List[str] = field(default_factory=list)
+    layer: str = UNKNOWN_LAYER
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "agent_card": self.agent_card,
+            "owner": self.owner,
+            "status": self.status,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "tags": self.tags,
+            "layer": self.layer,
+        }
+
+
+class StorageBackend(ABC):
+    # Whether the backend can group several writes into one commit (see
+    # SqlStorageBackend.transaction). File/memory backends cannot, which is why
+    # derived projections must not be built on them.
+    supports_transactions = False
+
+    @classmethod
+    @abstractmethod
+    def init(cls, config: dict) -> 'StorageBackend':
+        pass
+
+    @abstractmethod
+    def create(self, agent: AgentCard, owner: Optional[str] = None,
+               status: str = 'published', layer: str = UNKNOWN_LAYER) -> bool:
+        pass
+
+    @abstractmethod
+    def find_by_key(self, name: str, organization: str, owner: Optional[str] = None) -> Optional[AgentRecord]:
+        pass
+
+    @abstractmethod
+    def find_by_name(self, name: str) -> List[AgentCard]:
+        pass
+
+    @abstractmethod
+    def find_by_organization(self, organization: str) -> List[AgentCard]:
+        pass
+
+    @abstractmethod
+    def find_all(self, status: Optional[str] = None) -> List[AgentCard]:
+        """Get all agents; when ``status`` is given, only agents in that status."""
+        pass
+
+    @abstractmethod
+    def find_by_owner(self, owner: str) -> List[AgentRecord]:
+        pass
+
+    @abstractmethod
+    def find_by_status(self, status: str) -> List[AgentCard]:
+        """Find agents by status."""
+        pass
+
+    @abstractmethod
+    def find_by_tag(self, tag: str) -> List[AgentCard]:
+        """Find agents by tag (from agent_tags_map)."""
+        pass
+
+    @abstractmethod
+    def update(self, name: str, organization: str, agent_data: Dict[str, Any],
+               owner: Optional[str] = None, layer=LAYER_UNSET) -> bool:
+        pass
+
+    @abstractmethod
+    def update_status(self, name: str, organization: str, new_status: str) -> bool:
+        """Update agent status."""
+        pass
+
+    @abstractmethod
+    def delete(self, name: str, organization: str, owner: Optional[str] = None) -> bool:
+        pass
+
+    @abstractmethod
+    def count(self) -> int:
+        pass
+
+    @abstractmethod
+    def get_created_at(self, name: str, organization: str) -> str:
+        """Get agent created_at timestamp."""
+        pass
+
+    @abstractmethod
+    def get_updated_at(self, name: str, organization: str) -> str:
+        """Get agent updated_at timestamp."""
+        pass
+
+    # Agent tags methods
+    @abstractmethod
+    def get_agent_tags(self, name: str, organization: str) -> List[str]:
+        """Get tags associated with an agent (from agent_card table)."""
+        pass
+
+    @abstractmethod
+    def update_agent_tags(self, name: str, organization: str, tags: List[str]) -> bool:
+        """Update tags for an agent (in agent_card table)."""
+        pass
+
+    # Tag entity management methods (for managing independent tag entities)
+    @abstractmethod
+    def create_tag(self, tag: Tag) -> bool:
+        """Create a new tag entity."""
+        pass
+
+    @abstractmethod
+    def get_tag(self, tag_id: str) -> Optional[Tag]:
+        """Get tag by tag_id."""
+        pass
+
+    @abstractmethod
+    def get_tag_by_name(self, name: str) -> Optional[Tag]:
+        """Get tag by name."""
+        pass
+
+    @abstractmethod
+    def update_tag(self, tag_id: str, tag: Tag) -> bool:
+        """Update tag entity."""
+        pass
+
+    @abstractmethod
+    def delete_tag(self, tag_id: str) -> bool:
+        """Delete tag entity."""
+        pass
+
+    @abstractmethod
+    def list_tags(self) -> List[Tag]:
+        """List all tags."""
+        pass
+
+    @abstractmethod
+    def close(self):
+        pass
+
+    def check_connection(self) -> None:
+        """Verify the backend is usable right now; raise on failure.
+
+        Non-abstract: default is a no-op so custom/FileStorage backends stay
+        valid. SQL backends override with a real round-trip query, which the
+        startup pre-check uses to fail fast before the server binds a port.
+        """
+        return None
+
+    def find_records(self, name: Optional[str] = None,
+                     organization: Optional[str] = None,
+                     layer: Optional[str] = None,
+                     status: Optional[str] = None) -> List[AgentRecord]:
+        """Return registration records for layer-aware queries.
+
+        The default implementation keeps custom storage backends compatible.
+        Built-in backends override it to push the layer predicate into their
+        storage engine.
+        """
+
+        if name is not None and organization is not None:
+            records = []
+            record = self.find_by_key(name, organization)
+            if record:
+                records.append(record)
+        elif name is not None:
+            records = [self.find_by_key(agent.name, agent.provider.organization)
+                       for agent in self.find_by_name(name)]
+            records = [record for record in records if record]
+        elif organization is not None:
+            records = [self.find_by_key(agent.name, agent.provider.organization)
+                       for agent in self.find_by_organization(organization)]
+            records = [record for record in records if record]
+        else:
+            records = [self.find_by_key(agent.name, agent.provider.organization)
+                       for agent in self.find_all()]
+            records = [record for record in records if record]
+
+        return [record for record in records
+                if (layer is None or record.layer == layer)
+                and (status is None or record.status == status)]

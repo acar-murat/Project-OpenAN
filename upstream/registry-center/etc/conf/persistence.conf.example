@@ -1,0 +1,32 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+
+# Persistence selector only; connection profiles live in etc/conf/db/.
+# Copy only the selected <provider>.json.template to <provider>.json.
+# Passwords are environment/.env values referenced by password_env; never literals.
+# DATABASE_CONFIG_DIR overrides the connection directory, relative to project root.
+persistence.mode=file
+
+# Independent audit replication: NOT the primary MySQL connection.
+# db/audit_mysql.json supplies its connection; audit file remains authoritative.
+# Sink failures warn and degrade to local-only; they never block business traffic.
+audit.mysql.enabled=${AUDIT_MYSQL_ENABLED:false}
+audit.mysql.batch_size=${AUDIT_MYSQL_BATCH_SIZE:50}
+audit.mysql.flush_interval=${AUDIT_MYSQL_FLUSH_INTERVAL:2}
+
+# Graph opt-in: knowledge_graph.enabled in server.conf; db/neo4j.json.
+# Vector opt-in: use_vectordb in server.conf; db/milvus.json.

@@ -1,0 +1,48 @@
+# Runtime credentials and DB connection values come from the untracked .env.
+# Configure token ownership for HTTP/HTTPS-no-mTLS. See docs/transport-runtime.md.
+services:
+  registry-center:
+    build: .
+    container_name: openan-registry-center
+    ports:
+      - "127.0.0.1:${REGISTRY_PORT:-5000}:${REGISTRY_PORT:-5000}"
+    volumes:
+      - ./data:/opt/registry-center/data
+      - ./log:/opt/registry-center/log
+      - ./etc/ssl:/opt/registry-center/etc/ssl:ro
+      - ./etc/sign_cert:/opt/registry-center/etc/sign_cert:ro
+      - type: bind
+        source: ${LLM_CONFIG_HOST_FILE:-./etc/config/models.yaml}
+        target: /opt/registry-center/etc/config/models.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${REGISTRY_CREDENTIAL_HOST_FILE:-./etc/conf/integration_credentials.conf}
+        target: /opt/registry-center/etc/conf/integration_credentials.conf
+        read_only: true
+        bind:
+          create_host_path: false
+    env_file:
+      - .env
+    environment:
+      REGISTRY_IP: "0.0.0.0"
+      REGISTRY_PORT: ${REGISTRY_PORT:-5000}
+      REGISTRY_ENABLE_HTTPS: ${REGISTRY_ENABLE_HTTPS:-false}
+      REGISTRY_VERIFY_CLIENT: ${REGISTRY_VERIFY_CLIENT:-false}
+      REGISTRY_OWNER_IDENTITY_MODE: ${REGISTRY_OWNER_IDENTITY_MODE:-token}
+      REGISTRY_INTEGRATION_AUTH_MODE: ${REGISTRY_INTEGRATION_AUTH_MODE:-static_bearer}
+      REGISTRY_REGISTRY_SIGN_ENABLED: ${REGISTRY_REGISTRY_SIGN_ENABLED:-true}
+      REGISTRY_FORWARDED_ALLOW_IPS: ${REGISTRY_FORWARDED_ALLOW_IPS:-127.0.0.1}
+    healthcheck:
+      test: ["CMD", "python", "-m", "agent_registry.healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - openan-net
+    restart: unless-stopped
+networks:
+  openan-net:
+    external: true
