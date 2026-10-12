@@ -33,6 +33,7 @@ observability = [
     "opentelemetry-sdk>=1.33.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.33.0",
     "opentelemetry-exporter-otlp-proto-http>=1.33.0",
+    "protobuf>=6.30.2,<7",
 ]
 
 [dependency-groups]
@@ -44,6 +45,7 @@ dev = [
     "types-jsonschema>=4.23.0",
     "types-protobuf>=6.30.0,<7",
     "hypothesis>=6.167.1",
+    "trustme>=1.0.0",
     "mkdocs>=1.6.1",
     "mkdocstrings-python>=2.0.8",
     "mkdocs-material>=9.7.7",
@@ -109,3 +111,5 @@ python_version = "3.12"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
+
+
