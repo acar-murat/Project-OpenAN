@@ -1,0 +1,645 @@
+// Copyright (c) 2026 Huawei Technologies Co., Ltd.
+// All Rights Reserved.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0 (the "License"); you may
+//    not use this file except in compliance with the License. You may obtain
+//    a copy of the License at
+//
+//         http://www.apache.org/licenses/LICENSE-2.0
+//
+//    Unless required by applicable law or agreed to in writing, software
+//    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+//    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+//    License for the specific language governing permissions and limitations
+//    under the License.
+import React, { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+    Search, Code2, LayoutDashboard,
+    X, Layers, Server, Radio, Network, Globe, ChevronRight,
+    Pencil, Trash2, CheckCircle2, AlertTriangle
+} from 'lucide-react';
+import { getAgentCards, updateAgentCard, deleteAgentCard } from "@/service/api.js";
+import DeleteConfirm from "@/components/common/pop_confirm/index.jsx";
+import CodeInspector from "./code_inspector/index.jsx";
+import AgentCard from "./agentcard_visualization/index.jsx";
+
+const THEMES = ['emerald', 'blue', 'indigo', 'rose', 'cyan', 'amber', 'violet'];
+
+const NETWORK_LAYER_VENDORS = ['huawei', 'ericsson', 'zte', '华为', '爱立信', '中兴'];
+const SERVICE_LAYER_VENDORS = ['直真', '新大陆', '福诺', '亿阳', '移动'];
+
+const getAssetsBySeed = (seed, layer) => {
+    const SERVICE_THEMES = ['blue', 'indigo', 'cyan'];
+    const NETWORK_THEMES = ['emerald', 'amber', 'rose'];
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+        hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const themes = layer === 'network' ? NETWORK_THEMES : SERVICE_THEMES;
+    return {
+        theme: themes[Math.abs(hash) % themes.length],
+        icon: layer === 'network' ? <Network size={22} /> : <Server size={22} />
+    };
+};
+
+const getAgentLayer = (agent) => {
+    const org = (agent.provider?.organization || '').toLowerCase();
+    const isNetworkVendor = NETWORK_LAYER_VENDORS.some(vendor => org.includes(vendor));
+    const isServiceVendor = SERVICE_LAYER_VENDORS.some(vendor => org.includes(vendor));
+    if (isNetworkVendor) return 'network';
+    if (isServiceVendor) return 'service';
+    return 'service';
+};
+
+const TABS = ['all', 'service', 'network', 'vendor'];
+
+const AgentRegistry = ({ isDark, t, isAdmin = false }) => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [agents, setAgents] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState('all');
+    const [selectedAgent, setSelectedAgent] = useState(null);
+    const [viewMode, setViewMode] = useState('structured');
+    const [editState, setEditState] = useState(null);
+    const [toast, setToast] = useState({ show: false, msg: '', type: 'success' });
+
+    const showToast = (msg, type = 'success') => setToast({ show: true, msg, type });
+
+    useEffect(() => {
+        if (!toast.show) return undefined;
+        const timer = setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
+        return () => clearTimeout(timer);
+    }, [toast]);
+
+    const enhanceAgents = (rawList) => rawList.map((val) => {
+        const key = val.name;
+        const syncedRaw = { ...val, provider: val.provider };
+        const modifiedSkills = (syncedRaw.skills || []).map(skill => {
+            const { inputs, outputs, ...rest } = skill;
+            return rest;
+        });
+        const layer = getAgentLayer(syncedRaw);
+        const ui = getAssetsBySeed(key, layer);
+        return {
+            ...syncedRaw,
+            id: key,
+            displayName: key.toUpperCase(),
+            ...ui,
+            layer: layer,
+            _raw: { ...syncedRaw, skills: modifiedSkills },
+        };
+    });
+
+    const fetchAgents = async () => {
+        try {
+            setLoading(true);
+            const response = await getAgentCards();
+            const rawList = response?.data || [];
+            setAgents(enhanceAgents(rawList));
+        } catch (err) {
+            console.error("Fetch Error:", err);
+            setAgents([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchAgents();
+    }, []);
+
+    const filteredAgents = useMemo(() => {
+        let result = agents;
+        if (searchTerm) {
+            const term = searchTerm.toLowerCase();
+            result = result.filter(a =>
+                a.id.toLowerCase().includes(term) ||
+                a.description?.toLowerCase().includes(term) ||
+                (a.skills || []).some(s => s.name?.toLowerCase().includes(term))
+            );
+        }
+        if (activeTab === 'service') {
+            result = result.filter(a => a.layer === 'service');
+        } else if (activeTab === 'network') {
+            result = result.filter(a => a.layer === 'network');
+        }
+        result = [...result].sort((a, b) => {
+            const order = { service: 0, network: 1 };
+            return (order[a.layer] ?? 2) - (order[b.layer] ?? 2);
+        });
+        return result;
+    }, [agents, searchTerm, activeTab]);
+
+    const vendorGroups = useMemo(() => {
+        const groups = {};
+        const source = searchTerm
+            ? agents.filter(a => {
+                const term = searchTerm.toLowerCase();
+                return a.id.toLowerCase().includes(term) || a.description?.toLowerCase().includes(term);
+            })
+            : agents;
+        source.forEach(a => {
+            const org = a.provider?.organization || 'Unknown';
+            if (!groups[org]) groups[org] = [];
+            groups[org].push(a);
+        });
+        Object.values(groups).forEach(arr => arr.sort((a, b) => {
+            const order = { service: 0, network: 1 };
+            return (order[a.layer] ?? 2) - (order[b.layer] ?? 2);
+        }));
+        return groups;
+    }, [agents, searchTerm]);
+
+    const tabCounts = useMemo(() => ({
+        all: agents.length,
+        service: agents.filter(a => a.layer === 'service').length,
+        network: agents.filter(a => a.layer === 'network').length,
+        vendor: Object.keys(vendorGroups).length,
+    }), [agents, vendorGroups]);
+
+    const themeColor = (theme) => {
+        const map = {
+            emerald: 'bg-emerald-500', blue: 'bg-blue-600', indigo: 'bg-indigo-500',
+            rose: 'bg-rose-500', cyan: 'bg-cyan-500', amber: 'bg-amber-500', violet: 'bg-violet-500'
+        };
+        return map[theme] || 'bg-blue-600';
+    };
+
+    const themeBorder = (theme) => {
+        const map = {
+            emerald: 'hover:border-emerald-300 dark:hover:border-emerald-700',
+            blue: 'hover:border-blue-300 dark:hover:border-blue-700',
+            indigo: 'hover:border-indigo-300 dark:hover:border-indigo-700',
+            rose: 'hover:border-rose-300 dark:hover:border-rose-700',
+            cyan: 'hover:border-cyan-300 dark:hover:border-cyan-700',
+            amber: 'hover:border-amber-300 dark:hover:border-amber-700',
+            violet: 'hover:border-violet-300 dark:hover:border-violet-700'
+        };
+        return map[theme] || 'hover:border-blue-300';
+    };
+
+    const layerBadge = (layer) => {
+        if (layer === 'network') {
+            return 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800';
+        }
+        return 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800';
+    };
+
+    const layerBg = () => {
+        return 'bg-white dark:bg-zinc-900';
+    };
+
+    // The list item carries UI-only decorations (id/displayName/theme/icon/
+    // layer/_raw) that must never be sent back to the registry.
+    const toCardPayload = (agent) => {
+        const { id, displayName, theme, icon, layer, _raw, ...card } = agent;
+        return card;
+    };
+
+    const openEdit = (agent) => {
+        const card = toCardPayload(agent);
+        setEditState({
+            agent,
+            mode: 'form',
+            saving: false,
+            form: {
+                description: card.description || '',
+                version: card.version || '',
+                providerUrl: card.provider?.url || '',
+                documentationUrl: card.documentationUrl || '',
+                iconUrl: card.iconUrl || '',
+            },
+            jsonText: JSON.stringify(card, null, 2),
+        });
+        setSelectedAgent(null);
+    };
+
+    const handleDeleteAgent = async (agent) => {
+        try {
+            await deleteAgentCard(agent.id, agent.provider?.organization || '');
+            showToast(t('registry.delete_success'));
+            if (selectedAgent?.id === agent.id) setSelectedAgent(null);
+            await fetchAgents();
+        } catch (err) {
+            console.error("Delete Error:", err);
+            showToast(`${t('registry.delete_failed')}${err.response?.data?.message || err.message}`, 'error');
+        }
+    };
+
+    const buildUpdatePayload = () => {
+        const card = toCardPayload(editState.agent);
+        if (editState.mode === 'json') {
+            let parsed;
+            try {
+                parsed = JSON.parse(editState.jsonText);
+            } catch (e) {
+                showToast(`${t('registry.json_invalid')}${e.message}`, 'error');
+                return null;
+            }
+            if (parsed?.name !== editState.agent.id ||
+                parsed?.provider?.organization !== editState.agent.provider?.organization) {
+                showToast(t('registry.json_identity_mismatch'), 'error');
+                return null;
+            }
+            return parsed;
+        }
+        const f = editState.form;
+        return {
+            ...card,
+            description: f.description,
+            version: f.version,
+            provider: { ...(card.provider || {}), url: f.providerUrl },
+            ...(f.documentationUrl ? { documentationUrl: f.documentationUrl } : {}),
+            ...(f.iconUrl ? { iconUrl: f.iconUrl } : {}),
+        };
+    };
+
+    const handleSaveEdit = async () => {
+        const payload = buildUpdatePayload();
+        if (!payload) return;
+        setEditState(prev => ({ ...prev, saving: true }));
+        try {
+            await updateAgentCard(editState.agent.id, editState.agent.provider?.organization || '', payload);
+            showToast(t('registry.update_success'));
+            setEditState(null);
+            await fetchAgents();
+        } catch (err) {
+            console.error("Update Error:", err);
+            showToast(`${t('registry.update_failed')}${err.response?.data?.message || err.message}`, 'error');
+            setEditState(prev => ({ ...prev, saving: false }));
+        }
+    };
+
+    const renderCard = (agent) => (
+        <div
+            key={agent.id}
+            onClick={() => { setSelectedAgent(agent); setViewMode('structured'); }}
+            className={`group relative p-6 rounded-2xl border cursor-pointer transition-all duration-300
+                ${layerBg()} border-zinc-100 dark:border-zinc-800
+                ${themeBorder(agent.theme)}
+                hover:shadow-lg hover:-translate-y-1 animate-in fade-in duration-300`}
+        >
+            <div className="flex items-start justify-between mb-4">
+                <div className={`p-3 rounded-xl text-white shadow-lg ${agent.layer === 'network' ? 'bg-emerald-500' : themeColor(agent.theme)}`}>
+                    {React.cloneElement(agent.icon, { size: 22 })}
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]" />
+                    <span className="text-[10px] font-black text-zinc-400 dark:text-zinc-500 uppercase">
+                        V{agent.version}
+                    </span>
+                    {isAdmin && (
+                        <DeleteConfirm
+                            title={t('registry.delete_agent_confirm')}
+                            onConfirm={() => handleDeleteAgent(agent)}
+                            isDark={isDark}
+                        >
+                            <button
+                                className="p-1.5 rounded-lg text-zinc-300 dark:text-zinc-600 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
+                                title={t('registry.delete_agent')}
+                            >
+                                <Trash2 size={14} />
+                            </button>
+                        </DeleteConfirm>
+                    )}
+                </div>
+            </div>
+
+            <h3 className="text-sm font-black text-zinc-900 dark:text-white mb-2 leading-tight truncate">
+                {agent.id}
+            </h3>
+            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 line-clamp-2 mb-4 leading-relaxed min-h-[2.5em]">
+                {agent.description}
+            </p>
+
+            <div className="flex flex-wrap gap-1.5 mb-4">
+                {(agent.skills || []).slice(0, 3).map(skill => (
+                    <span key={skill.id}
+                        className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">
+                        {skill.name}
+                    </span>
+                ))}
+                {(agent.skills || []).length > 3 && (
+                    <span className="px-2 py-0.5 rounded-md text-[9px] font-bold text-zinc-400 dark:text-zinc-500">
+                        +{agent.skills.length - 3}
+                    </span>
+                )}
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-zinc-100 dark:border-zinc-800">
+                <div className="flex items-center gap-2">
+                    <span className={`text-xs font-black px-4 py-1 rounded-lg border uppercase ${layerBadge(agent.layer)}`}>
+                        {agent.layer === 'network' ? 'Network' : 'Service'}
+                    </span>
+                    <span className={`text-xs font-black px-3 py-1 rounded-lg border ${agent.layer === 'network' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800'}`}>
+                        {agent.provider?.organization}
+                    </span>
+                </div>
+                <span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500">
+                    {agent.skills?.length || 0} {t('registry.skills_count')}
+                </span>
+            </div>
+        </div>
+    );
+
+    return (
+        <div className="h-full p-6 flex flex-col w-full transition-all animate-in fade-in duration-500 overflow-hidden font-sans">
+            <div className="shrink-0 flex items-center justify-between mb-6 px-2">
+                <div className="flex items-center gap-4">
+                    <div className="p-2.5 bg-zinc-900 dark:bg-blue-600 rounded-xl text-white shadow-lg">
+                        <Server size={20} />
+                    </div>
+                    <div>
+                        <h1 className="text-lg font-black text-zinc-900 dark:text-white uppercase leading-none">
+                            {t('registry.title')}
+                        </h1>
+                        <span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase">
+                            {agents.length} {t('registry.units')} · {t('registry.online')}
+                        </span>
+                    </div>
+                </div>
+                <div className="relative w-72">
+                    <input
+                        type="text"
+                        placeholder={t('registry.search_placeholder')}
+                        className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 outline-none transition-all dark:text-white"
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        value={searchTerm}
+                    />
+                    <Search className="absolute left-3.5 top-3 text-zinc-400" size={14} />
+                </div>
+            </div>
+
+            <div className="shrink-0 flex items-center gap-1 mb-6 px-2">
+                {TABS.map(tab => (
+                    <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wide transition-all duration-300
+                            ${activeTab === tab
+                                ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 shadow-md'
+                                : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}
+                    >
+                        {tab === 'all' && <Layers size={14} />}
+                        {tab === 'service' && <Radio size={14} />}
+                        {tab === 'network' && <Network size={14} />}
+                        {tab === 'vendor' && <Globe size={14} />}
+                        {t(`registry.tab_${tab}`)}
+                        <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-black
+                            ${activeTab === tab
+                                ? 'bg-white/20 dark:bg-zinc-900/20'
+                                : 'bg-zinc-100 dark:bg-zinc-800'}`}>
+                            {tabCounts[tab]}
+                        </span>
+                    </button>
+                ))}
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0 px-2">
+                {loading ? (
+                    <div className="h-full flex items-center justify-center">
+                        <div className="flex flex-col items-center gap-3 text-zinc-400">
+                            <div className="w-8 h-8 border-2 border-zinc-300 dark:border-zinc-600 border-t-blue-500 rounded-full animate-spin" />
+                            <span className="text-sm font-bold uppercase tracking-wider">{t('registry.synchronizing')}</span>
+                        </div>
+                    </div>
+                ) : activeTab === 'vendor' ? (
+                    <div className="space-y-8 pb-8">
+                        {Object.entries(vendorGroups).map(([org, orgAgents]) => (
+                            <div key={org}>
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="p-2 rounded-lg bg-zinc-100 dark:bg-zinc-800">
+                                        <Globe size={16} className="text-zinc-500" />
+                                    </div>
+                                    <h2 className="text-sm font-black text-zinc-700 dark:text-zinc-300 uppercase">
+                                        {org}
+                                    </h2>
+                                    <span className="text-[10px] font-bold text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-full">
+                                        {orgAgents.length} {t('registry.units')}
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                    {orgAgents.map(renderCard)}
+                                </div>
+                            </div>
+                        ))}
+                        {Object.keys(vendorGroups).length === 0 && (
+                            <div className="h-64 flex items-center justify-center text-zinc-400 text-sm font-bold">
+                                {t('registry.no_agents')}
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-8">
+                        {filteredAgents.map(renderCard)}
+                        {filteredAgents.length === 0 && (
+                            <div className="col-span-full h-64 flex items-center justify-center text-zinc-400 text-sm font-bold">
+                                {t('registry.no_agents')}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {selectedAgent && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 dark:bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-zinc-950 w-full max-w-5xl h-[85vh] rounded-[2rem] shadow-2xl border border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+                        <div className="p-5 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center bg-zinc-50/50 dark:bg-zinc-900/50 shrink-0">
+                            <div className="flex items-center gap-4">
+                                <div className={`p-3 rounded-xl text-white shadow-lg ${selectedAgent.layer === 'network' ? 'bg-emerald-500' : themeColor(selectedAgent.theme)}`}>
+                                    {React.cloneElement(selectedAgent.icon, { size: 24 })}
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-black dark:text-white leading-none">{selectedAgent.id}</h2>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className="text-[10px] font-bold text-zinc-400 uppercase">{selectedAgent.provider?.organization}</span>
+                                        <span className="w-1 h-1 rounded-full bg-zinc-300" />
+                                        <span className="text-[10px] font-bold text-zinc-400">V{selectedAgent.version}</span>
+                                        <span className="w-1 h-1 rounded-full bg-zinc-300" />
+                                        <span className="text-[10px] font-bold text-zinc-400">{selectedAgent.skills?.length} {t('registry.skills_count')}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                {isAdmin && (
+                                    <button
+                                        onClick={() => openEdit(selectedAgent)}
+                                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all text-[11px] font-black uppercase shadow-sm bg-blue-600 hover:bg-blue-700 text-white"
+                                    >
+                                        <Pencil size={14} />
+                                        {t('registry.edit_agent')}
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setViewMode(viewMode === 'structured' ? 'raw' : 'structured')}
+                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all text-[11px] font-black uppercase shadow-sm
+                                        ${isDark
+                                            ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                                            : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-600'}`}
+                                >
+                                    {viewMode === 'structured' ? <Code2 size={14} /> : <LayoutDashboard size={14} />}
+                                    {viewMode === 'structured' ? t('registry.switch_to_raw') : t('registry.switch_to_gui')}
+                                </button>
+                                <button
+                                    onClick={() => setSelectedAgent(null)}
+                                    className="p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                                >
+                                    <X size={20} className="text-zinc-400" />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-y-auto no-scrollbar">
+                            {viewMode === 'structured' ? (
+                                <AgentCard agent={selectedAgent._raw} isDark={isDark} />
+                            ) : (
+                                <CodeInspector
+                                    data={selectedAgent._raw}
+                                    fileName={`${selectedAgent.id} AgentCard`}
+                                    isDark={isDark}
+                                />
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {editState && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/40 dark:bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-zinc-950 w-full max-w-2xl max-h-[85vh] rounded-[2rem] shadow-2xl border border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+                        <div className="p-5 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center bg-zinc-50/50 dark:bg-zinc-900/50 shrink-0">
+                            <div>
+                                <h2 className="text-base font-black dark:text-white leading-none">{t('registry.edit_agent_title')}</h2>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-[10px] font-bold text-zinc-400 uppercase">{editState.agent.id}</span>
+                                    <span className="w-1 h-1 rounded-full bg-zinc-300" />
+                                    <span className="text-[10px] font-bold text-zinc-400">{editState.agent.provider?.organization}</span>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setEditState(prev => ({ ...prev, mode: 'form' }))}
+                                    className={`px-3 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all shadow-sm
+                                        ${editState.mode === 'form'
+                                            ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900'
+                                            : 'bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300'}`}
+                                >
+                                    {t('registry.edit_mode_form')}
+                                </button>
+                                <button
+                                    onClick={() => setEditState(prev => ({ ...prev, mode: 'json' }))}
+                                    className={`px-3 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all shadow-sm
+                                        ${editState.mode === 'json'
+                                            ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900'
+                                            : 'bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300'}`}
+                                >
+                                    {t('registry.edit_mode_json')}
+                                </button>
+                                <button
+                                    onClick={() => setEditState(null)}
+                                    className="p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                                >
+                                    <X size={20} className="text-zinc-400" />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-4">
+                            {editState.mode === 'form' ? (
+                                <>
+                                    <p className="text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl px-3 py-2">
+                                        {t('registry.edit_identity_hint')}
+                                    </p>
+                                    <EditField
+                                        label={t('registry.field_description')}
+                                        value={editState.form.description}
+                                        isTextArea
+                                        onChange={(v) => setEditState(prev => ({ ...prev, form: { ...prev.form, description: v } }))}
+                                    />
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <EditField
+                                            label={t('registry.field_version')}
+                                            value={editState.form.version}
+                                            onChange={(v) => setEditState(prev => ({ ...prev, form: { ...prev.form, version: v } }))}
+                                        />
+                                        <EditField
+                                            label={t('registry.field_provider_url')}
+                                            value={editState.form.providerUrl}
+                                            onChange={(v) => setEditState(prev => ({ ...prev, form: { ...prev.form, providerUrl: v } }))}
+                                        />
+                                        <EditField
+                                            label={t('registry.field_documentation_url')}
+                                            value={editState.form.documentationUrl}
+                                            onChange={(v) => setEditState(prev => ({ ...prev, form: { ...prev.form, documentationUrl: v } }))}
+                                        />
+                                        <EditField
+                                            label={t('registry.field_icon_url')}
+                                            value={editState.form.iconUrl}
+                                            onChange={(v) => setEditState(prev => ({ ...prev, form: { ...prev.form, iconUrl: v } }))}
+                                        />
+                                    </div>
+                                    <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                                        {t('registry.edit_form_hint')}
+                                    </p>
+                                </>
+                            ) : (
+                                <textarea
+                                    value={editState.jsonText}
+                                    onChange={(e) => setEditState(prev => ({ ...prev, jsonText: e.target.value }))}
+                                    spellCheck={false}
+                                    className="w-full h-full min-h-[320px] font-mono text-[12px] leading-relaxed p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 outline-none focus:border-blue-400 resize-none"
+                                />
+                            )}
+                        </div>
+                        <div className="p-4 border-t border-zinc-100 dark:border-zinc-800 flex justify-end gap-3 bg-zinc-50/50 dark:bg-zinc-900/50 shrink-0">
+                            <button
+                                onClick={() => setEditState(null)}
+                                className="px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all"
+                            >
+                                {t('common.cancel')}
+                            </button>
+                            <button
+                                onClick={handleSaveEdit}
+                                disabled={editState.saving}
+                                className="px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20 disabled:opacity-50 transition-all"
+                            >
+                                {editState.saving ? t('registry.saving') : t('registry.save_agent')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {toast.show && (
+                <div className={`fixed top-10 left-1/2 -translate-x-1/2 z-[10000] flex items-center gap-2 px-5 py-2.5 rounded-full shadow-2xl text-xs font-black uppercase tracking-wide animate-in slide-in-from-top-4 fade-in duration-300
+                    ${toast.type === 'success' ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}`}>
+                    {toast.type === 'success' ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+                    {toast.msg}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const EditField = ({ label, value, onChange, isTextArea }) => (
+    <div className="space-y-1.5">
+        <label className="text-[11px] font-black uppercase tracking-widest text-zinc-400">{label}</label>
+        {isTextArea ? (
+            <textarea
+                rows={3}
+                value={value || ''}
+                onChange={(e) => onChange(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 outline-none focus:border-blue-400 transition-all resize-none"
+            />
+        ) : (
+            <input
+                value={value || ''}
+                onChange={(e) => onChange(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 outline-none focus:border-blue-400 transition-all"
+            />
+        )}
+    </div>
+);
+
+export default AgentRegistry;

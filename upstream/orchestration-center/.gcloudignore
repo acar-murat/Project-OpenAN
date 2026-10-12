@@ -1,0 +1,76 @@
+# GCP Cloud Build ignore file
+# Speeds up source upload by excluding unnecessary files
+
+.git/
+.gitignore
+.gitmodules
+.github/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+venv/
+
+# Local runtime files
+/log/
+/run/
+/data/
+
+# Tests and docs (not needed in container)
+test/
+tests/
+docs/
+
+# Markdown files (except README)
+*.md
+!README.md
+
+# Secrets are injected at runtime, never uploaded with the build context.
+.env
+.env.*
+
+# Frontend (not part of backend container)
+workflow-designer/node_modules/
+workflow-designer/dist/
+
+# Misc
+wheelhouse/
+wheels/
+.gcloudignore
+.env.database-*
+etc/conf/db/*.json
+etc/conf/db_config.json
+etc/conf/mysql_config.json
+etc/conf/server.conf
+etc/conf/agent_credentials.json
+etc/conf/cipher.key
+etc/config/models.yaml
+common/config/models.yaml
+common/config/llm_config.json
+**/auth.local.json
+etc/ssl/
+etc/sign_cert/
+**/*.pem
+**/*.key
+**/*.cer
+**/cert_pwd
+**/cipher.key
+**/data/
+reviews/
+.agents/
+.claude/
+.codex/
+*.token.*

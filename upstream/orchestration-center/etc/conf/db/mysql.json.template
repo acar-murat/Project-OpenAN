@@ -1,0 +1,13 @@
+{
+  "host": "127.0.0.1",
+  "port": 3306,
+  "database": "orchestration_center",
+  "user": "<YOUR_DB_USERNAME>",
+  "password_env": "MYSQL_PASSWORD",
+  "pool_min": 1,
+  "pool_max": 20,
+  "connect_timeout": 10,
+  "read_timeout": 30,
+  "write_timeout": 30,
+  "ssl_ca": ""
+}

@@ -1,0 +1,41 @@
+# Development override for docker-compose.yml. Not auto-loaded — run with:
+#   docker compose -f docker-compose.yml -f docker-compose-dev.yml up -d
+#
+# Points at registry-center's dev stack, which disables HTTPS (see
+# registry-center/docker-compose-dev.yml) — so this must use http, not the
+# production file's https, or every agent-cards request will fail the TLS
+# handshake against a plaintext listener.
+services:
+  orchestration-center:
+    environment:
+      - AGENT_REGISTRY_URL=${AGENT_REGISTRY_URL:-http://openan-registry-center:5000}
+
+  # ---- Optional: sample A2A agent fleet (stub demo agents) ----
+  # Same image, different command. These cards give workflow execution
+  # real endpoints to call; without them, executions have nothing to talk
+  # to. Cards under samples/agentcard/*.json hardcode 127.0.0.1, which only
+  # resolves correctly when both processes share a host — SAMPLE_AGENTS_HOST
+  # makes the sample server advertise (and register with the registry) this
+  # service's Compose DNS name instead, so orchestration-center's container
+  # can reach it. Dev-only and deliberately absent from docker-compose.yml:
+  # these are stub agents, not real production backends, and registering
+  # their loopback-free URLs into a shared prod registry would still be the
+  # wrong thing to do even if the networking worked.
+  sample-agents:
+    build: .
+    container_name: openan-orchestration-center-sample-agents
+    command: ["python3", "-m", "samples.start_agents_server"]
+    volumes:
+      - ${LLM_CONFIG_HOST_FILE:-./common/config/models.yaml}:/opt/orchestration-center/common/config/models.yaml:ro
+    env_file:
+      - .env
+    environment:
+      - SAMPLE_AGENTS_HOST=sample-agents
+      - AGENT_REGISTRY_URL=${AGENT_REGISTRY_URL:-http://openan-registry-center:5000}
+      - PERSISTENCE_MODE=file
+    ports:
+      - "8899-8904:8899-8904"
+      - "26335-26336:26335-26336"
+    networks:
+      - openan-net
+    restart: unless-stopped

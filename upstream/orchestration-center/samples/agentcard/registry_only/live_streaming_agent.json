@@ -1,0 +1,59 @@
+[
+  {
+    "name": "Live Streaming Agent",
+    "description": "负责赛事需求的解析与监控。",
+    "provider": {
+      "organization": "Demo",
+      "url": ""
+    },
+    "version": "0.1.0",
+    "iconUrl": "",
+    "skills": [
+      {
+        "id": "info-parsing",
+        "name": "Event Info Parsing",
+        "description": "提取赛事的路线与业务需求",
+        "tags": [
+          "live",
+          "info"
+        ]
+      },
+      {
+        "id": "kqi-monitoring",
+        "name": "KQI Monitoring",
+        "description": "实时反馈保障任务关键质量指标及任务状态",
+        "tags": [
+          "live",
+          "monitoring"
+        ]
+      }
+    ],
+    "capabilities": {
+      "pushNotifications": false,
+      "streaming": false,
+      "extensions": [
+        {
+          "uri": "https://projects.tmforum.org/a2aproject/telecommunication/extensions/Task-T/v1",
+          "description": "Extension of structured prompt Task-T requests."
+        },
+        {
+          "uri": "https://projects.tmforum.org/a2aproject/telecommunication/extensions/Negotiation-T/v1",
+          "description": "Extension for A2A-T negotiation text exchange."
+        }
+      ]
+    },
+    "defaultInputModes": [
+      "text"
+    ],
+    "defaultOutputModes": [
+      "text"
+    ],
+    "supportedInterfaces": [
+      {
+        "protocolBinding": "HTTP+JSON",
+        "protocolVersion": "1.0",
+        "url": "http://127.0.0.1:8901"
+      }
+    ]
+  }
+]
