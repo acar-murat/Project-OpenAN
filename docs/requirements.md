@@ -219,6 +219,8 @@ maintainers but can already guide the design.
 | F-7 | The execution record (`GET /api/v1/executions/{id}`) is written when the stream ends, and is the source for reconciliation after a disconnect. | `sse_executor.py`, `external_api.py` | R-ORC-5 |
 | F-8 | Default ports: Orchestration Center `5001`, Registry Center `5000`. | `common/util/conf_obj.py` in each repo | O-4 |
 | F-9 | `a2a-t-sdk-python` is at **1.1.0** and ships the `Task-T/network-layer/ran-energy-saving`, `Negotiation-T/feasibility-negotiation` and `Authorization-T/authorization-policy-management` templates. | `pyproject.toml`, `src/a2a_t/prompt_resources/` | O-15 |
+| F-10 | Both services run locally without containers: Registry in its documented local HTTP profile (TLS, signing and owner isolation off), Orchestration over HTTP with a configured admin credential (it refuses to start without one, even on loopback). Orchestration lists Registry agents at `GET /rest/v1/orchestrate/agent-cards`. | `scripts/dev.py`, [dev-environment.md](dev-environment.md) | O-4, R-WF-2 |
+| F-11 | `orchestration-center` installs `workflow-exec-engine` 0.0.9 and `a2a-sdk` 1.2.x from PyPI; the vendored workflow-engine SDK is 0.1.0, outside its `<0.1` pin. | `orchestration-center/requirements.txt` | O-15, PLT-5 |
 
 **Implication for O-20:** neither endpoint fits the LLD's "submit → get
 execution ID → subscribe" flow as written. The two workable options are:
