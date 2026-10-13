@@ -1,0 +1,9 @@
+# Mock price API, mock MAE, demo client and their tests.
+a2a-sdk[http-server]>=1.1.2,<2
+fastapi>=0.115
+uvicorn>=0.34
+httpx>=0.28
+protobuf>=6.30.2,<7
+pytest>=8.0
+pytest-asyncio>=0.24
+ruff>=0.6

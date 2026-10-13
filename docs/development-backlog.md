@@ -9,7 +9,7 @@ release delivers UC1 (power-band energy saving).
 
 - Work items have an ID (`<area>-<n>`), the requirements they cover, what they
   depend on, and a definition of done.
-- **Status:** ✅ Ready (start now) · 🟡 Ready, finish before GA · 🔴 Blocked on an open item.
+- **Status:** ✅ Ready (start now) · 🟡 Ready, finish before GA · 🔴 Blocked on an open item · ☑️ Done.
 - Blocked items are designed so that a stub lets development continue; only
   the item that swaps the stub for the real integration is blocked.
 - Changes to `upstream/` are kept small and listed in §8, so they can be
@@ -38,8 +38,10 @@ release delivers UC1 (power-band energy saving).
 | PLT-1 | Create the repo layout: `services/oss`, `services/energy-agent`, `workflows/energy-saving`, `frontend`, `deploy`, `tests/e2e`. | — | — | ✅ | Folders exist, each with a README and an empty test suite |
 | PLT-2 | Add `deploy/docker-compose.dev.yml` that starts Registry (5000) and Orchestration (5001) from `upstream/`, plus OSS and the Energy Agent. Ports come from env vars, defaulting to F-8. | R-NFR-3, R-NFR-5 | PLT-1 | ✅ | `docker compose up` brings all services up healthy |
 | PLT-3 | Add `.env.example` with every variable in LLD §14, each blocked value marked with its O-item. | R-NFR-5 | PLT-1 | ✅ | File committed; services fail fast on a missing required variable |
-| PLT-4 | Add CI (GitHub Actions): lint, type check and unit tests for `services/*`; the upstream test suites run on change under `upstream/`. | — | PLT-1 | ✅ | CI green on `main` |
+| PLT-4 | Add CI (GitHub Actions). **Done for the current code:** `.github/workflows/ci.yml` runs ruff + pytest on `mocks/` and a full dev-stack run (`scripts/dev.py ci`). Extend to `services/*` as they appear. | — | PLT-1 | ☑️ | CI green on `main` |
 | PLT-5 | Pin `a2a-t-sdk` 1.1.0 and `workflow-exec-engine` from the vendored subtrees (path dependencies). | O-15 | PLT-1 | 🟡 | Services install the SDKs from `upstream/` |
+| PLT-8 | Local dev runner and VS Code setup: `scripts/dev.py` (setup / up / down / status / logs / test / demo / ci, cross-platform) and `.vscode/` launch, task and settings files. Registry runs in its documented local HTTP profile; Orchestration gets a generated admin password. | R-NFR-3 | — | ☑️ | `OpenAN: all services` launches the stack in VS Code; `dev.py ci` passes |
+| PLT-9 | Mock electricity price API (`mocks/price_api`): UC1 power-band tariff and UC2 time-of-use prices, optional API key, error and slow modes. | R-PRC-1, R-PRC-4, R-PRC-5 | — | ☑️ | Tests pass; used by the demo |
 | PLT-6 | Bootstrap secrets and TLS for the dev stack (self-signed, RSA ≥ 3072), using the upstream `generate_selfsign_cert.py`. | R-NFR-1, R-NFR-2 | PLT-2 | ✅ | Services talk over TLS in dev |
 | PLT-7 | Final port allocation and topology; fill in AgentCard `agent_id` and URLs. | R-REG-5 | **O-4** | 🔴 | Topology doc approved; config updated |
 
@@ -79,7 +81,7 @@ release delivers UC1 (power-band energy saving).
 | EA-11 | Build the combined A2A-T intent from the schedule and tariff; map them onto Task-T slots per the answer to O-22 (provisionally: schedule in `task_target`, tariff in `task_context`). | R-PRC-6 | EA-10, OSS-14 | 🔴 O-22 | Golden test of the generated Task-T message |
 | EA-5 | Negotiation engine: build the opening `propose`, handle both MAE replies, `accept-reject`, `abort`; round limit and per-round timeout; record `NegotiationRound`. | R-NEG-1 … R-NEG-4, R-NEG-6 | EA-1, EA-4 | ✅ (vs. mock) | Golden tests based on `a2a-t-sdk-python/tests/resources/negotiation-cases` pass |
 | EA-6 | Target-relaxation switch (`ENERGY_AGENT_ALLOW_TARGET_RELAXATION`, default off); counter-proposals go back to the user. | R-NEG-5 | EA-5 | 🟡 O-14 | Tests for both settings |
-| EA-7 | Mock MAE for development, based on the SDK sample server in `upstream/a2a-t-sdk-python/a2a-t-sample/ran-energy-saving`; returns feasible, infeasible-with-proposal, and error cases. | — | EA-5 | ✅ | Mock drives EA-5 tests and the sandbox |
+| EA-7 | Mock MAE (`mocks/mae`): A2A HTTP+JSON server on `a2a-sdk`, Task-T `ran-energy-saving/v1` and Negotiation-T feasibility, deterministic UC1 planning, registers in the Registry Center. Scenarios: feasible, infeasible-with-proposal, task rejected, execution failure. | — | EA-5 | ☑️ | 34 tests pass; `scripts/demo_uc1.py` runs feasible and infeasible paths end to end |
 | EA-8 | Production price adapter against the real API (auth, timezone, rate limits). | R-PRC-3 | **O-1** | 🔴 | Contract tests against the provider sandbox |
 | EA-9 | Point negotiation at the real MAE (`MAE_AGENT_ID`, `MAE_AGENT_ENDPOINT`), with the agreed trust model. | R-NEG-1, R-NEG-2, R-NFR-7 | **O-3**, O-7 | 🔴 | Feasibility round succeeds against MAE |
 
@@ -140,6 +142,7 @@ commit, and offered upstream where it is generally useful.
 | UP-1 | orchestration-center | Return the `execution_id` in the first SSE event (or a response header) of `POST /orchestrate/execute`. | Lets OSS reconcile through `/executions/{id}` after a disconnect (OSS-12). | High |
 | UP-2 | orchestration-center | Add SSE `id:` sequence numbers and `Last-Event-ID` resume. | Closes most of O-19; removes the need for client-side buffering. | Medium |
 | UP-3 | orchestration-center | Make `GET /orchestrate/execute/{psop_id}` run the stored PSOP itself, not just its name as an intent (F-3), or document the behaviour. | Predictable execution of a pinned workflow. | Medium |
+| UP-5 | workflow-engine-sdk-python | `orchestration-center` pins `workflow-exec-engine>=0.0.9,<0.1` from PyPI, while the vendored SDK is 0.1.0; align the pin so PLT-5 can use the vendored copy. | Single SDK version across the stack. | Medium |
 | UP-4 | orchestration-center | Accept and propagate a caller `trace_id`. | End-to-end tracing (R-NFR-4). | Low |
 
 ---
