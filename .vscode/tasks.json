@@ -13,8 +13,26 @@
       "problemMatcher": []
     },
     {
+      "label": "dev: setup + UIs",
+      "detail": "dev: setup, then npm install for both web UIs if needed (needs Node 20+)",
+      "type": "shell",
+      "command": "python3",
+      "windows": { "command": "python" },
+      "args": ["scripts/dev.py", "setup", "--ui"],
+      "problemMatcher": []
+    },
+    {
+      "label": "dev: ui setup",
+      "detail": "npm install for both web UIs if needed (rewrites the lockfiles' npmmirror host to npmjs)",
+      "type": "shell",
+      "command": "python3",
+      "windows": { "command": "python" },
+      "args": ["scripts/dev.py", "ui-setup"],
+      "problemMatcher": []
+    },
+    {
       "label": "dev: up (background)",
-      "detail": "Start Registry, Orchestration, mock price API and mock MAE in the background",
+      "detail": "Start Registry, mock LLM, Orchestration, mock price API, mock MAE and mock Energy Agent",
       "type": "shell",
       "command": "python3",
       "windows": { "command": "python" },
@@ -22,12 +40,12 @@
       "problemMatcher": []
     },
     {
-      "label": "dev: up + designer UI",
-      "detail": "Also start the Orchestration Center UI on http://127.0.0.1:3003 (needs Node 20+)",
+      "label": "dev: up + UIs (background)",
+      "detail": "Also start the OpenAN console on http://127.0.0.1:3003 and the Registry UI on :3004",
       "type": "shell",
       "command": "python3",
       "windows": { "command": "python" },
-      "args": ["scripts/dev.py", "up", "registry", "orchestration", "price-api", "mae", "designer"],
+      "args": ["scripts/dev.py", "up", "--ui"],
       "problemMatcher": []
     },
     {
@@ -57,6 +75,15 @@
       "problemMatcher": []
     },
     {
+      "label": "dev: demo via Orchestration Center",
+      "detail": "Run UC1 through the Orchestration Center and mock Energy Agent, as the Execution Center does",
+      "type": "shell",
+      "command": "python3",
+      "windows": { "command": "python" },
+      "args": ["scripts/dev.py", "demo-orch"],
+      "problemMatcher": []
+    },
+    {
       "label": "dev: test",
       "detail": "ruff + pytest for mocks/ and scripts/",
       "type": "shell",
@@ -68,7 +95,7 @@
     },
     {
       "label": "dev: ci",
-      "detail": "Everything CI runs: setup, test, up, both demos, down",
+      "detail": "Everything CI runs: setup, test, up, the direct and orchestrated demos, down",
       "type": "shell",
       "command": "python3",
       "windows": { "command": "python" },

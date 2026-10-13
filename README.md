@@ -5,14 +5,19 @@ baseline for the **OpenAN Energy-Saving Function** (LLD US202610010001 v10.2).
 
 ## Quick start
 
-Requires Python 3.12+ (and ideally [`uv`](https://docs.astral.sh/uv/)). In VS Code, run
-**"OpenAN: all services"** from Run and Debug, then **"Demo: UC1 end to end"**. From a terminal:
+Requires Python 3.12+ (and ideally [`uv`](https://docs.astral.sh/uv/)); the web UIs also need
+Node.js 20+. In VS Code, run **"OpenAN: all services + UIs"** from Run and Debug. From a terminal:
 
 ```sh
-python scripts/dev.py up      # Registry 5000, Orchestration 5001, mock price API 8090, mock MAE 8091
-python scripts/dev.py demo    # UC1: tariff -> discovery -> negotiation -> task -> intent report
+python scripts/dev.py up --ui    # services plus the web UIs (OpenAN console :3003, Registry UI :3004)
+python scripts/dev.py demo       # UC1 straight against the mocks: tariff -> negotiation -> task -> report
+python scripts/dev.py demo-orch  # UC1 through the Orchestration Center, as the Execution Center runs it
 python scripts/dev.py down
 ```
+
+To watch UC1 in the browser, open <http://127.0.0.1:3003>, log in as `admin` with
+`ORCH_AUTH_PASSWORD` from `.dev/dev.env`, go to **Execution Center**, pick **Mock Energy Agent**
+as host agent, type `Run power-band energy saving for Accra Central` and press **Dispatch**.
 
 See [docs/dev-environment.md](docs/dev-environment.md) for details, the mocks, and CI.
 

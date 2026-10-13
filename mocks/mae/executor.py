@@ -201,7 +201,7 @@ class MockMaeExecutor(AgentExecutor):
     @staticmethod
     async def _artifact(context: RequestContext, event_queue: EventQueue, body: dict[str, Any]) -> None:
         artifact = Artifact(artifact_id=str(uuid.uuid4()), name=body["type"])
-        artifact.parts.add(text=body["type"])
+        artifact.parts.add(text=planning.describe(body))
         artifact.metadata[TASK_T_EXTENSION_URI] = json.dumps(body, ensure_ascii=False)
         await event_queue.enqueue_event(TaskArtifactUpdateEvent(
             task_id=context.task_id or "",
