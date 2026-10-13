@@ -273,3 +273,31 @@ def build_artifacts(intent: Intent) -> list[dict[str, Any]]:
 
 def _slug(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-").upper()[:12] or "REGION"
+
+
+def describe(body: dict[str, Any]) -> str:
+    """One readable line for an artifact, used as its text part (the JSON body stays in metadata)."""
+    kind = body["type"]
+    if kind == "TaskPlan":
+        month = body["planning_month"] or "next"
+        detail = f"{body['site_count']} sites, planning month {month}, steps {', '.join(body['steps'])}"
+    elif kind == "BandPrediction":
+        detail = f"predicted band and monthly charge for {len(body['sites'])} sites"
+    elif kind == "SiteClassification":
+        counts = body["counts"]
+        detail = (f"{counts['downgrade']} downgrade, {counts['upgrade']} upgrade, "
+                  f"{counts['grade_stable']} grade-stable sites")
+    elif kind == "TrafficMigrationPlan":
+        moved = sum(a["load_kw"] for a in body["actions"] if a["direction"] == "out")
+        detail = f"{len(body['actions'])} migration actions moving {moved:.2f} kW"
+    elif kind == "EnergySavingActivated":
+        detail = (f"energy saving active on {len(body['activated_sites'])} sites in "
+                  f"{len(body['active_periods'])} periods")
+    elif kind == "IntentReport":
+        currency = body["currency"]
+        detail = (f"predicted {body['billing_period']} cost {body['predicted_cost_before']:,.2f} -> "
+                  f"{body['predicted_cost_after']:,.2f} {currency}, saving {body['predicted_saving']:,.2f} "
+                  f"{currency}; {body['sites_changing_band']} sites change band")
+    else:
+        return kind
+    return f"{kind}: {detail}"

@@ -3,18 +3,11 @@
 import logging
 import os
 import threading
-import time
 
 import uvicorn
 
-from mocks.mae.server import build_app, register
-
-
-def register_with_retry(registry_url: str, public_url: str, timeout: float) -> None:
-    """Keep trying until the Registry Center accepts the card (it may start after this process)."""
-    deadline = time.monotonic() + timeout
-    while not register(registry_url, public_url) and time.monotonic() < deadline:
-        time.sleep(2)
+from mocks.common.registry import register_with_retry
+from mocks.mae.server import agent_card_payload, build_app
 
 
 def main() -> None:
@@ -25,7 +18,8 @@ def main() -> None:
     registry_url = os.environ.get("REGISTRY_CENTER_URL")
     if registry_url:
         timeout = float(os.environ.get("MOCK_MAE_REGISTER_TIMEOUT_SECONDS", "60"))
-        threading.Thread(target=register_with_retry, args=(registry_url, public_url, timeout), daemon=True).start()
+        card = agent_card_payload(public_url)
+        threading.Thread(target=register_with_retry, args=(registry_url, card, timeout), daemon=True).start()
     uvicorn.run(build_app(public_url), host=host, port=port)
 
 
