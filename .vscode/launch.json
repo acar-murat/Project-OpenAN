@@ -2,7 +2,10 @@
   // Run and debug the local OpenAN energy-saving stack.
   // First time: the "OpenAN: all services" compound runs the "dev: setup" task, which creates
   // .dev/ (virtualenvs and dev.env). Then use "Demo: UC1 end to end" while the services run.
-  // Ports: Registry 5000, Orchestration 5001, mock price API 8090, mock MAE 8091.
+  // Ports: Registry 5000, Orchestration 5001, mock price API 8090, mock MAE 8091,
+  // mock Energy Agent 8092, mock LLM 8093. Web UIs (need Node 20+): OpenAN console 3003, Registry UI 3004.
+  // "OpenAN: all services + UIs" runs the "dev: setup + UIs" task first (npm install on the first run),
+  // then open http://127.0.0.1:3003 and log in as admin with ORCH_AUTH_PASSWORD from .dev/dev.env.
   "version": "0.2.0",
   "configurations": [
     {
@@ -26,6 +29,7 @@
       "python": "${workspaceFolder}/.dev/venv-orchestration-center/bin/python",
       "windows": { "python": "${workspaceFolder}/.dev/venv-orchestration-center/Scripts/python.exe" },
       "envFile": "${workspaceFolder}/.dev/dev.env",
+      "env": { "LLM_CONFIG_FILE": "${workspaceFolder}/.dev/models.yaml" },
       "console": "integratedTerminal",
       "justMyCode": false
     },
@@ -54,6 +58,48 @@
       "console": "integratedTerminal"
     },
     {
+      "name": "Mock Energy Agent",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "mocks.energy_agent",
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/.dev/venv-orchestration-center/bin/python",
+      "envFile": "${workspaceFolder}/.dev/dev.env",
+      "env": { "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/upstream/orchestration-center" },
+      "windows": {
+        "python": "${workspaceFolder}/.dev/venv-orchestration-center/Scripts/python.exe",
+        "env": { "PYTHONPATH": "${workspaceFolder};${workspaceFolder}/upstream/orchestration-center" }
+      },
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Mock LLM",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "mocks.llm",
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/.dev/venv-mocks/bin/python",
+      "windows": { "python": "${workspaceFolder}/.dev/venv-mocks/Scripts/python.exe" },
+      "envFile": "${workspaceFolder}/.dev/dev.env",
+      "env": { "PYTHONPATH": "${workspaceFolder}" },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "UI: OpenAN console (3003)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}/upstream/orchestration-center/workflow-designer"
+    },
+    {
+      "name": "UI: Registry Center (3004)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}/upstream/registry-center/registry-center-web"
+    },
+    {
       "name": "Demo: UC1 end to end",
       "type": "debugpy",
       "request": "launch",
@@ -77,6 +123,17 @@
       "console": "integratedTerminal"
     },
     {
+      "name": "Demo: UC1 via Orchestration Center",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/demo_orchestration.py",
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/.dev/venv-mocks/bin/python",
+      "windows": { "python": "${workspaceFolder}/.dev/venv-mocks/Scripts/python.exe" },
+      "envFile": "${workspaceFolder}/.dev/dev.env",
+      "console": "integratedTerminal"
+    },
+    {
       "name": "Tests: mocks",
       "type": "debugpy",
       "request": "launch",
@@ -92,8 +149,22 @@
   "compounds": [
     {
       "name": "OpenAN: all services",
-      "configurations": ["Registry Center", "Orchestration Center", "Mock price API", "Mock MAE"],
+      "configurations": ["Registry Center", "Mock LLM", "Orchestration Center", "Mock price API", "Mock MAE",
+                         "Mock Energy Agent"],
       "preLaunchTask": "dev: setup",
+      "stopAll": true
+    },
+    {
+      "name": "OpenAN: all services + UIs",
+      "configurations": ["Registry Center", "Mock LLM", "Orchestration Center", "Mock price API", "Mock MAE",
+                         "Mock Energy Agent", "UI: OpenAN console (3003)", "UI: Registry Center (3004)"],
+      "preLaunchTask": "dev: setup + UIs",
+      "stopAll": true
+    },
+    {
+      "name": "OpenAN: UIs only",
+      "configurations": ["UI: OpenAN console (3003)", "UI: Registry Center (3004)"],
+      "preLaunchTask": "dev: ui setup",
       "stopAll": true
     },
     {

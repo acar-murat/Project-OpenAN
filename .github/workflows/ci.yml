@@ -42,7 +42,7 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v6
-      - name: Setup, test, start services, run both UC1 demos, stop
+      - name: Setup, test, start services, run the UC1 demos (direct and via Orchestration), stop
         run: python scripts/dev.py ci
       - name: Service logs
         if: failure()

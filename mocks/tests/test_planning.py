@@ -96,3 +96,10 @@ def test_experience_first_periods_are_excluded_from_activation():
     report = planning.build_artifacts(planning.Intent(region="A"))
     activated = next(a for a in report if a["type"] == "EnergySavingActivated")
     assert {(p["start_hour"], p["end_hour"]) for p in activated["active_periods"]} == {(23, 5), (6, 9), (16, 17)}
+
+
+def test_describe_gives_one_readable_line_per_artifact():
+    artifacts = planning.build_artifacts(planning.Intent(region="Accra Central"))
+    lines = [planning.describe(body) for body in artifacts]
+    assert [line.split(":")[0] for line in lines] == [body["type"] for body in artifacts]
+    assert "saving" in lines[-1] and "GHS" in lines[-1]
