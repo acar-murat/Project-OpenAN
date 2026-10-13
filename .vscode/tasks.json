@@ -1,0 +1,79 @@
+{
+  // Thin wrappers over scripts/dev.py, which works the same from any terminal.
+  // Terminal > Run Task... ; "dev: test" is the default test task.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev: setup",
+      "detail": "Create .dev/ virtualenvs and dev.env (skips what is already up to date)",
+      "type": "shell",
+      "command": "python3",
+      "windows": { "command": "python" },
+      "args": ["scripts/dev.py", "setup"],
+      "problemMatcher": []
+    },
+    {
+      "label": "dev: up (background)",
+      "detail": "Start Registry, Orchestration, mock price API and mock MAE in the background",
+      "type": "shell",
+      "command": "python3",
+      "windows": { "command": "python" },
+      "args": ["scripts/dev.py", "up"],
+      "problemMatcher": []
+    },
+    {
+      "label": "dev: up + designer UI",
+      "detail": "Also start the Orchestration Center UI on http://127.0.0.1:3003 (needs Node 20+)",
+      "type": "shell",
+      "command": "python3",
+      "windows": { "command": "python" },
+      "args": ["scripts/dev.py", "up", "registry", "orchestration", "price-api", "mae", "designer"],
+      "problemMatcher": []
+    },
+    {
+      "label": "dev: status",
+      "type": "shell",
+      "command": "python3",
+      "windows": { "command": "python" },
+      "args": ["scripts/dev.py", "status"],
+      "problemMatcher": []
+    },
+    {
+      "label": "dev: down",
+      "detail": "Stop everything started by dev: up",
+      "type": "shell",
+      "command": "python3",
+      "windows": { "command": "python" },
+      "args": ["scripts/dev.py", "down"],
+      "problemMatcher": []
+    },
+    {
+      "label": "dev: demo",
+      "detail": "Run the UC1 end-to-end demo against the running services",
+      "type": "shell",
+      "command": "python3",
+      "windows": { "command": "python" },
+      "args": ["scripts/dev.py", "demo"],
+      "problemMatcher": []
+    },
+    {
+      "label": "dev: test",
+      "detail": "ruff + pytest for mocks/ and scripts/",
+      "type": "shell",
+      "command": "python3",
+      "windows": { "command": "python" },
+      "args": ["scripts/dev.py", "test"],
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "dev: ci",
+      "detail": "Everything CI runs: setup, test, up, both demos, down",
+      "type": "shell",
+      "command": "python3",
+      "windows": { "command": "python" },
+      "args": ["scripts/dev.py", "ci"],
+      "problemMatcher": []
+    }
+  ]
+}
