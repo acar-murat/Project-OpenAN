@@ -11,11 +11,8 @@ Run with ``python -m mocks.mae``. Environment:
 
 from __future__ import annotations
 
-import logging
-import os
 from typing import Any
 
-import httpx
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.routes import create_agent_card_routes, create_rest_routes
 from a2a.server.tasks.inmemory_task_store import InMemoryTaskStore
@@ -27,8 +24,6 @@ from starlette.routing import Route
 
 from mocks.common.a2at import NEGOTIATION_T_EXTENSION_URI, TASK_T_EXTENSION_URI
 from mocks.mae.executor import MockMaeExecutor
-
-log = logging.getLogger("mock-mae")
 
 AGENT_NAME = "Mock MAE"
 AGENT_ORGANIZATION = "OpenAN Mock"
@@ -90,24 +85,3 @@ def build_app(public_url: str) -> Starlette:
         *create_rest_routes(handler),
     ])
 
-
-def register(registry_url: str, public_url: str) -> bool:
-    headers = {}
-    token = os.environ.get("REGISTRY_ACCESS_TOKEN")
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    url = registry_url.rstrip("/") + "/rest/v1/registry-center/agent-cards"
-    try:
-        response = httpx.post(url, json={"agentCards": [agent_card_payload(public_url)]},
-                              headers=headers, timeout=10, trust_env=False)
-    except httpx.HTTPError as exc:
-        log.warning("registry registration failed: %s", exc)
-        return False
-    if response.status_code in (200, 201):
-        log.info("registered %s with %s", AGENT_NAME, registry_url)
-        return True
-    if response.status_code == 409:
-        log.info("%s already registered with %s", AGENT_NAME, registry_url)
-        return True
-    log.warning("registry registration failed: HTTP %s %s", response.status_code, response.text[:300])
-    return False

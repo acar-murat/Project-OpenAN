@@ -32,7 +32,6 @@ from a2a.utils.constants import TransportProtocol
 from google.protobuf.json_format import MessageToDict, ParseDict
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from mocks.common import uc1_data  # noqa: E402
 from mocks.common.a2at import (  # noqa: E402
     ENERGY_SAVING_TEMPLATE_URI,
     FEASIBILITY_ACCEPT_REJECT_TEMPLATE_URI,
@@ -40,6 +39,11 @@ from mocks.common.a2at import (  # noqa: E402
     NEGOTIATION_T_EXTENSION_URI,
     TASK_T_EXTENSION_URI,
     TEMPLATE_URI_METADATA_KEY,
+)
+from mocks.common.uc1_messages import (  # noqa: E402
+    energy_saving_slots,
+    feasibility_accept,
+    feasibility_opening,
 )
 from mocks.mae.server import AGENT_NAME, AGENT_ORGANIZATION  # noqa: E402
 
@@ -101,17 +105,7 @@ async def send(client: Any, request: SendMessageRequest, extension: str) -> list
 
 
 async def negotiate(client: Any, region: str, tariff: dict[str, Any], scenario: str | None) -> dict[str, Any]:
-    opening = {
-        "category": "goal_achievement",
-        "message_class": "initiate_feasibility_assessment",
-        "negotiation_id": str(uuid.uuid4()),
-        "round": 1,
-        "under_evaluation_description": {
-            "region": region,
-            "schedule": uc1_data.intent_schedule(),
-            "power_band_tariff": {k: tariff[k] for k in ("currency", "billing_period", "bands")},
-        },
-    }
+    opening = feasibility_opening(region, tariff)
     events = await send(client, negotiation_message(opening, FEASIBILITY_PROPOSE_TEMPLATE_URI, scenario),
                         NEGOTIATION_T_EXTENSION_URI)
     reply = json.loads(events[-1]["message"]["metadata"][NEGOTIATION_T_EXTENSION_URI])
@@ -120,8 +114,7 @@ async def negotiate(client: Any, region: str, tariff: dict[str, Any], scenario: 
         for reason in reply.get("reasons", []):
             print(f"   reason: {reason}")
         return reply
-    accept = {"category": "goal_achievement", "message_class": "accept",
-              "negotiation_id": reply["negotiation_id"], "round": reply["round"]}
+    accept = feasibility_accept(reply)
     events = await send(client, negotiation_message(accept, FEASIBILITY_ACCEPT_REJECT_TEMPLATE_URI, scenario),
                         NEGOTIATION_T_EXTENSION_URI)
     closed = json.loads(events[-1]["message"]["metadata"][NEGOTIATION_T_EXTENSION_URI])
@@ -130,13 +123,7 @@ async def negotiate(client: Any, region: str, tariff: dict[str, Any], scenario: 
 
 
 async def dispatch(client: Any, region: str, tariff: dict[str, Any], scenario: str | None) -> str:
-    slots = {
-        "task_object": region,
-        "operation_type": "Create",
-        "task_description": f"Power-band energy saving for {region}",
-        "task_target": {"schedule": uc1_data.intent_schedule()},
-        "task_context": {"power_band_tariff": {k: tariff[k] for k in ("currency", "billing_period", "bands")}},
-    }
+    slots = energy_saving_slots(region, tariff)
     request = SendMessageRequest()
     request.message.message_id = str(uuid.uuid4())
     request.message.role = Role.ROLE_USER
