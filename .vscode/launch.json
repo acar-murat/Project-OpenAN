@@ -1,0 +1,106 @@
+{
+  // Run and debug the local OpenAN energy-saving stack.
+  // First time: the "OpenAN: all services" compound runs the "dev: setup" task, which creates
+  // .dev/ (virtualenvs and dev.env). Then use "Demo: UC1 end to end" while the services run.
+  // Ports: Registry 5000, Orchestration 5001, mock price API 8090, mock MAE 8091.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Registry Center",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "agent_registry.start",
+      "cwd": "${workspaceFolder}/upstream/registry-center",
+      "python": "${workspaceFolder}/.dev/venv-registry-center/bin/python",
+      "windows": { "python": "${workspaceFolder}/.dev/venv-registry-center/Scripts/python.exe" },
+      "envFile": "${workspaceFolder}/.dev/dev.env",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Orchestration Center",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "orchestrate.start",
+      "cwd": "${workspaceFolder}/upstream/orchestration-center",
+      "python": "${workspaceFolder}/.dev/venv-orchestration-center/bin/python",
+      "windows": { "python": "${workspaceFolder}/.dev/venv-orchestration-center/Scripts/python.exe" },
+      "envFile": "${workspaceFolder}/.dev/dev.env",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Mock price API",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "mocks.price_api",
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/.dev/venv-mocks/bin/python",
+      "windows": { "python": "${workspaceFolder}/.dev/venv-mocks/Scripts/python.exe" },
+      "envFile": "${workspaceFolder}/.dev/dev.env",
+      "env": { "PYTHONPATH": "${workspaceFolder}" },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Mock MAE",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "mocks.mae",
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/.dev/venv-mocks/bin/python",
+      "windows": { "python": "${workspaceFolder}/.dev/venv-mocks/Scripts/python.exe" },
+      "envFile": "${workspaceFolder}/.dev/dev.env",
+      "env": { "PYTHONPATH": "${workspaceFolder}" },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Demo: UC1 end to end",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/demo_uc1.py",
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/.dev/venv-mocks/bin/python",
+      "windows": { "python": "${workspaceFolder}/.dev/venv-mocks/Scripts/python.exe" },
+      "envFile": "${workspaceFolder}/.dev/dev.env",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Demo: UC1 infeasible (counter-proposal)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/demo_uc1.py",
+      "args": ["--scenario", "infeasible"],
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/.dev/venv-mocks/bin/python",
+      "windows": { "python": "${workspaceFolder}/.dev/venv-mocks/Scripts/python.exe" },
+      "envFile": "${workspaceFolder}/.dev/dev.env",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Tests: mocks",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["-q", "mocks/tests"],
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/.dev/venv-mocks/bin/python",
+      "windows": { "python": "${workspaceFolder}/.dev/venv-mocks/Scripts/python.exe" },
+      "env": { "PYTHONPATH": "${workspaceFolder}" },
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "OpenAN: all services",
+      "configurations": ["Registry Center", "Orchestration Center", "Mock price API", "Mock MAE"],
+      "preLaunchTask": "dev: setup",
+      "stopAll": true
+    },
+    {
+      "name": "OpenAN: mocks only",
+      "configurations": ["Mock price API", "Mock MAE"],
+      "preLaunchTask": "dev: setup",
+      "stopAll": true
+    }
+  ]
+}

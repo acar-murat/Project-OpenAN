@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-unit:
+    name: Lint and unit tests (mocks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install -r mocks/requirements.txt
+      - name: Ruff
+        run: python -m ruff check mocks scripts
+      - name: Pytest
+        run: python -m pytest -q mocks/tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+  dev-stack:
+    name: Dev stack end to end (Registry, Orchestration, mocks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+      - name: Setup, test, start services, run both UC1 demos, stop
+        run: python scripts/dev.py ci
+      - name: Service logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-stack-logs
+          path: .dev/logs/
+          if-no-files-found: ignore
