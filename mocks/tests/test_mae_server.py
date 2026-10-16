@@ -94,7 +94,7 @@ def test_task_streams_artifacts_and_completes(client):
     events = stream_task(client, {"task_object": "Accra Central", "operation_type": "Create"})
     assert events[0]["task"]["status"]["state"] == "TASK_STATE_SUBMITTED"
     assert artifact_types(events) == ["TaskPlan", "BandPrediction", "SiteClassification", "TrafficMigrationPlan",
-                                      "EnergySavingActivated", "IntentReport"]
+                                      "CellSelection", "EnergySavingActivated", "IntentReport"]
     assert final_state(events) == "TASK_STATE_COMPLETED"
 
 
@@ -107,7 +107,7 @@ def test_task_without_region_is_rejected(client):
 def test_exec_failure_scenario_fails_mid_task(client):
     events = stream_task(client, {"task_object": "Accra"}, mockScenario="exec_failure")
     assert final_state(events) == "TASK_STATE_FAILED"
-    assert artifact_types(events) == ["TaskPlan", "BandPrediction"]
+    assert artifact_types(events) == ["TaskPlan", "BandPrediction", "TaskError"]
 
 
 def test_wrong_template_is_rejected(client):

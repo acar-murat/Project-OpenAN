@@ -26,6 +26,7 @@ See [docs/dev-environment.md](docs/dev-environment.md) for details, the mocks, a
 - [Use cases](docs/use-cases.md): the original requirement deck ([pptx](docs/source/Open_AN_UC.pptx)) transcribed, with where the LLD differs from it.
 - [Requirements](docs/requirements.md): functional and non-functional requirements traced to the LLD, open items, and findings from the upstream code.
 - [Development backlog](docs/development-backlog.md): milestones, work items, blockers, and feature requests for upstream.
+- [Test cases](docs/test-cases.md): every documented mock MAE and Energy Agent case with input, expected and actual result, generated from a real test run (`python scripts/dev.py test-report`).
 - [Development environment](docs/dev-environment.md): running the stack locally and in VS Code, the mock price API and mock MAE, and CI.
 
 ## Upstream repositories

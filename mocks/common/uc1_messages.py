@@ -17,27 +17,36 @@ def tariff_slot(tariff: dict[str, Any]) -> dict[str, Any]:
     return {key: tariff[key] for key in ("currency", "billing_period", "bands")}
 
 
-def feasibility_opening(region: str, tariff: dict[str, Any]) -> dict[str, Any]:
-    """Negotiation-T ``initiate_feasibility_assessment`` for the UC1 intent."""
+def feasibility_opening(region: str, tariff: dict[str, Any], *, schedule: list[dict[str, Any]] | None = None,
+                        negotiation_id: str | None = None, round_no: int = 1) -> dict[str, Any]:
+    """Negotiation-T ``initiate_feasibility_assessment`` for the UC1 intent.
+
+    A re-initiation (round 2 and later) passes the adjusted ``schedule`` and the same
+    ``negotiation_id``. Every round carries the full context (LLD v10.4 §11.5: stateless).
+    """
     return {
         "category": "goal_achievement",
         "message_class": "initiate_feasibility_assessment",
-        "negotiation_id": str(uuid.uuid4()),
-        "round": 1,
+        "negotiation_id": negotiation_id or str(uuid.uuid4()),
+        "round": round_no,
         "under_evaluation_description": {
             "region": region,
-            "schedule": uc1_data.intent_schedule(),
+            "schedule": schedule if schedule is not None else uc1_data.intent_schedule(),
             "power_band_tariff": tariff_slot(tariff),
         },
     }
 
 
-def feasibility_accept(reply: dict[str, Any]) -> dict[str, Any]:
+def feasibility_accept(reply: dict[str, Any], selected_solution: str | None = None) -> dict[str, Any]:
     """Accept MAE's verdict: a ``feasible_request_confirmation`` (-> AGREED) or an
-    ``infeasible_with_proposal`` (-> CLOSED_INFEASIBLE; the counter-proposal goes back to the user)."""
-    return {"category": "goal_achievement", "message_class": "accept",
-            "accepted": reply["message_class"],
-            "negotiation_id": reply["negotiation_id"], "round": reply["round"]}
+    ``infeasible_with_proposal`` (-> CLOSED_INFEASIBLE; the counter-proposal goes back to the user).
+    When MAE offered several solutions, ``selected_solution`` names the chosen one."""
+    accept = {"category": "goal_achievement", "message_class": "accept",
+              "accepted": reply["message_class"],
+              "negotiation_id": reply["negotiation_id"], "round": reply["round"]}
+    if selected_solution:
+        accept["selected_solution"] = selected_solution
+    return accept
 
 
 def feasibility_abort(opening: dict[str, Any], reply: dict[str, Any]) -> dict[str, Any]:

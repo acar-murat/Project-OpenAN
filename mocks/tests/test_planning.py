@@ -59,8 +59,8 @@ def test_plan_is_deterministic_and_saves_money():
     second = planning.build_artifacts(planning.Intent(region="Accra Central"))
     assert first == second
     assert [a["type"] for a in first] == [
-        "TaskPlan", "BandPrediction", "SiteClassification", "TrafficMigrationPlan", "EnergySavingActivated",
-        "IntentReport",
+        "TaskPlan", "BandPrediction", "SiteClassification", "TrafficMigrationPlan", "CellSelection",
+        "EnergySavingActivated", "IntentReport",
     ]
     report = first[-1]
     assert report["predicted_cost_after"] <= report["predicted_cost_before"]
