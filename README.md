@@ -27,6 +27,8 @@ See [docs/dev-environment.md](docs/dev-environment.md) for details, the mocks, a
 - [Requirements](docs/requirements.md): functional and non-functional requirements traced to the LLD, open items, and findings from the upstream code.
 - [Development backlog](docs/development-backlog.md): milestones, work items, blockers, and feature requests for upstream.
 - [Development environment](docs/dev-environment.md): running the stack locally and in VS Code, the mock price API and mock MAE, and CI.
+- [OSS and Energy Agent](docs/oss-and-energy-agent.md): what has been built for our two components, how it works, and what is still missing.
+- [API reference](docs/api-reference.md): endpoints, request and response examples, and errors for the mocks, the upstream calls we make, the audit log, and the planned OSS API.
 
 ## Upstream repositories
 
