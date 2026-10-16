@@ -413,6 +413,8 @@ def cmd_ci(_args: list[str]) -> None:
         cmd_demo(["--scenario", "infeasible", "--skip-orchestration"])
         cmd_demo_orch([])
         cmd_demo_orch(["--scenario", "infeasible"])
+        # Same workflow from everyday wording: no "power-band energy saving", region after "in".
+        cmd_demo_orch(["--intent", "Cut the electricity bill of the sites in Kumasi", "--expect-region", "Kumasi"])
         run([venv_python("mocks"), "-m", "mocks.common.audit", EA_AUDIT_LOG], cwd=ROOT, env=service_env())
     except BaseException:
         cmd_logs(DEFAULT_SERVICES)
