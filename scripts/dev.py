@@ -9,6 +9,7 @@
     python scripts/dev.py logs SERVICE     # print a service's log
     python scripts/dev.py down             # stop everything started by `up`
     python scripts/dev.py test             # ruff + pytest for mocks/ and scripts/
+    python scripts/dev.py test-report [OUT]  # run the tests and write docs/test-cases.md (or OUT)
     python scripts/dev.py demo [ARGS...]   # run scripts/demo_uc1.py against the running stack
     python scripts/dev.py demo-orch [ARGS...]  # run UC1 through the Orchestration Center, as the UI does
     python scripts/dev.py ci               # setup, test, up, demo, down (what CI runs)
@@ -391,8 +392,32 @@ def cmd_test(_args: list[str]) -> None:
     run([python, "-m", "pytest", "-q", "mocks/tests"], cwd=ROOT, env=service_env())
     # The workflow-engine tests are skipped above (the mocks venv has no workflow_engine).
     run([venv_python("orchestration-center"), "-m", "pytest", "-q", "-p", "no:cacheprovider",
-         "mocks/tests/test_energy_workflow.py", "mocks/tests/test_energy_control_point.py"],
-        cwd=ROOT, env=service_env(SERVICES["energy-agent"]))
+         *WORKFLOW_ENGINE_TESTS], cwd=ROOT, env=service_env(SERVICES["energy-agent"]))
+
+
+#: Test files that need the workflow-engine SDK (skipped in the mocks venv).
+WORKFLOW_ENGINE_TESTS = ["mocks/tests/test_energy_workflow.py", "mocks/tests/test_energy_control_point.py",
+                         "mocks/tests/test_scenarios_energy_agent.py"]
+
+
+def cmd_test_report(args: list[str]) -> None:
+    """Run both test environments, recording documented cases, and render the test-case document."""
+    out = Path(args[0]) if args else ROOT / "docs" / "test-cases.md"
+    work = DEV / "test-report"
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True)
+    cases = work / "cases.jsonl"
+    cases.touch()
+    runs = [("mocks", venv_python("mocks"), ["mocks/tests"], service_env()),
+            ("orchestration", venv_python("orchestration-center"), WORKFLOW_ENGINE_TESTS,
+             service_env(SERVICES["energy-agent"]))]
+    junit = []
+    for name, python, targets, env in runs:
+        junit.append(work / f"junit-{name}.xml")
+        # Failures still produce a report; the render step's exit code carries them.
+        subprocess.run([str(python), "-m", "pytest", "-q", "-p", "no:cacheprovider", f"--junitxml={junit[-1]}",
+                        *targets], cwd=ROOT, env={**env, "TEST_CASES_OUTPUT": str(cases)})
+    run([sys.executable, ROOT / "scripts" / "test_report.py", cases, out, *junit], cwd=ROOT)
 
 
 def cmd_demo(args: list[str]) -> None:
@@ -406,6 +431,7 @@ def cmd_demo_orch(args: list[str]) -> None:
 def cmd_ci(_args: list[str]) -> None:
     cmd_setup([])
     cmd_test([])
+    cmd_test_report([str(DEV / "test-cases.md")])
     try:
         cmd_up([])
         os.environ["DEMO_REQUIRE_REGISTRY"] = "1"
@@ -413,6 +439,7 @@ def cmd_ci(_args: list[str]) -> None:
         cmd_demo(["--scenario", "infeasible", "--skip-orchestration"])
         cmd_demo_orch([])
         cmd_demo_orch(["--scenario", "infeasible"])
+        cmd_demo_orch(["--scenario", "partial_execution"])
         run([venv_python("mocks"), "-m", "mocks.common.audit", EA_AUDIT_LOG], cwd=ROOT, env=service_env())
     except BaseException:
         cmd_logs(DEFAULT_SERVICES)
@@ -423,7 +450,8 @@ def cmd_ci(_args: list[str]) -> None:
 
 COMMANDS = {
     "setup": cmd_setup, "up": cmd_up, "down": cmd_down, "status": cmd_status, "logs": cmd_logs,
-    "test": cmd_test, "demo": cmd_demo, "demo-orch": cmd_demo_orch, "ci": cmd_ci, "ui-setup": cmd_ui_setup,
+    "test": cmd_test, "test-report": cmd_test_report,
+    "demo": cmd_demo, "demo-orch": cmd_demo_orch, "ci": cmd_ci, "ui-setup": cmd_ui_setup,
 }
 
 

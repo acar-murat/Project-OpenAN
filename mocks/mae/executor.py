@@ -12,9 +12,16 @@ Content is read as JSON where possible. Unlike the real MAE, the mock does not
 run the A2A-T SDK's LLM-based prompt validation, so it is deterministic and
 needs no LLM.
 
-``MOCK_MAE_SCENARIO`` forces an outcome: ``auto`` (default: decide from the
-content), ``feasible``, ``infeasible``, ``reject_task`` or ``exec_failure``.
-A message can override it with ``metadata["mockScenario"]``.
+``MOCK_MAE_SCENARIO`` forces an outcome (default ``auto``: decide from the content).
+A message can override it with ``metadata["mockScenario"]``. See ``SCENARIOS`` for
+the list; each one maps to an outcome in LLD v10.4 §4 (failure paths) and §5.2
+(negotiation rounds).
+
+* ``MOCK_MAE_SLOW_SECONDS`` (default 60): how long ``slow_negotiation`` waits before
+  answering, so the Energy Agent's per-round timeout fires.
+* ``MOCK_MAE_EXEC_TIMEOUT_SECONDS`` (default 5): how long ``exec_timeout`` runs before
+  giving up.
+* ``MOCK_MAE_SLOW_STEP_SECONDS`` (default 3): step delay for ``delayed``.
 """
 
 from __future__ import annotations
@@ -51,7 +58,24 @@ from mocks.common.a2at import (
 )
 from mocks.mae import planning
 
-SCENARIOS = ("auto", "feasible", "infeasible", "reject_task", "exec_failure")
+#: Scenario -> what the mock does. Negotiation scenarios change the feasibility verdict;
+#: task scenarios change the Task-T stream.
+SCENARIOS = {
+    "auto": "decide from the content (rate floors above MOCK_MAE_MAX_RATE_FLOOR_MBPS are infeasible)",
+    "feasible": "negotiation: feasible, request confirmation",
+    "infeasible": "negotiation: infeasible in every round; the counter-proposal repeats the request",
+    "partially_feasible": "negotiation: some saving periods feasible; the proposal drops saving in the others",
+    "multi_round": "negotiation: infeasible in round 1 with relaxed rate floors, feasible from round 2",
+    "multiple_solutions": "negotiation: feasible with three alternative solutions to choose from",
+    "negotiation_error": "negotiation: MAE answers with an error message",
+    "slow_negotiation": "negotiation: MAE answers after MOCK_MAE_SLOW_SECONDS",
+    "reject_task": "task: REJECTED before any artifact",
+    "semantic_rejected": "task: REJECTED with negotiation.semantic_rejected (LLD F7)",
+    "exec_failure": "task: TaskError artifact then FAILED after two artifacts (LLD F8)",
+    "exec_timeout": "task: TaskError execution_timeout then FAILED after MOCK_MAE_EXEC_TIMEOUT_SECONDS",
+    "partial_execution": "task: COMPLETED, but some cells fail to activate (achievement partial)",
+    "delayed": "task: COMPLETED, each step waits MOCK_MAE_SLOW_STEP_SECONDS",
+}
 SCENARIO_METADATA_KEY = "mockScenario"
 
 
@@ -60,8 +84,14 @@ def _scenario(metadata: dict[str, Any]) -> str:
     return scenario if scenario in SCENARIOS else "auto"
 
 
-def _step_delay() -> float:
-    return float(os.environ.get("MOCK_MAE_STEP_DELAY_SECONDS", "0.5"))
+def _seconds(name: str, default: str) -> float:
+    return float(os.environ.get(name, default))
+
+
+def _step_delay(scenario: str = "auto") -> float:
+    if scenario == "delayed":
+        return _seconds("MOCK_MAE_SLOW_STEP_SECONDS", "3")
+    return _seconds("MOCK_MAE_STEP_DELAY_SECONDS", "0.5")
 
 
 def _agent_message(context_id: str, task_id: str | None, text: str) -> Message:
@@ -100,8 +130,11 @@ class MockMaeExecutor(AgentExecutor):
         negotiation_id = str(content.get("negotiation_id") or uuid.uuid4())
         round_no = int(content.get("round") or 1)
 
+        scenario = _scenario(metadata)
         if message_class == "initiate_feasibility_assessment":
-            reply = self._assess(content if content else raw, _scenario(metadata), negotiation_id, round_no)
+            if scenario == "slow_negotiation":
+                await asyncio.sleep(_seconds("MOCK_MAE_SLOW_SECONDS", "60"))
+            reply = self._assess(content if content else raw, scenario, negotiation_id, round_no)
             template = FEASIBILITY_PROPOSE_TEMPLATE_URI
         elif message_class in ("accept", "reject"):
             # Accepting an infeasible verdict closes the negotiation without agreement (LLD §5.2).
@@ -118,6 +151,8 @@ class MockMaeExecutor(AgentExecutor):
                 "round": round_no,
                 "outcome": outcome,
             }
+            if outcome == "agreed" and content.get("selected_solution"):
+                reply["selected_solution"] = content["selected_solution"]
             template = FEASIBILITY_ACCEPT_REJECT_TEMPLATE_URI
         elif message_class == "abort":
             reply = {"message_class": "negotiation_closed", "negotiation_id": negotiation_id,
@@ -139,21 +174,41 @@ class MockMaeExecutor(AgentExecutor):
         try:
             intent = planning.parse_intent(content)
         except planning.IntentError as exc:
-            return {**base, "message_class": "infeasible_with_proposal", "reasons": [str(exc)], "proposal": None}
+            return {**base, "message_class": "infeasible_with_proposal", "feasibility": "none",
+                    "reasons": [str(exc)], "basis": str(exc), "proposal": None, "counter_proposal": None}
+        if scenario == "negotiation_error":
+            return {**base, "message_class": "error", "region": intent.region,
+                    "error": "assessment engine unavailable: traffic forecast for the cluster is missing (mock)"}
         assessment = planning.assess_feasibility(intent)
-        if scenario == "feasible":
-            assessment = {"feasible": True, "reasons": [], "proposal": None}
+        if scenario in ("feasible", "multiple_solutions") or (scenario == "multi_round" and round_no >= 2):
+            assessment = {**assessment, "feasible": True, "feasibility": "full", "reasons": [], "proposal": None,
+                          "periods": [{**p, "feasible": True, "reason": None} for p in assessment["periods"]]}
+        elif scenario == "multi_round":
+            assessment = planning.relaxed_proposal(intent)
+        elif scenario == "partially_feasible":
+            assessment = planning.assess_partially_feasible(intent)
         elif scenario == "infeasible" and assessment["feasible"]:
             assessment = {
+                **assessment,
                 "feasible": False,
+                "feasibility": "none",
                 "reasons": ["mock scenario 'infeasible' forced by configuration"],
                 "proposal": {"schedule": intent.schedule},
+                "counter_proposal": {"adjusted_experience_target": "none: the request cannot be met as stated"},
             }
         if assessment["feasible"]:
-            return {**base, "message_class": "feasible_request_confirmation", "region": intent.region,
-                    "assessment": "The cluster can meet the energy-saving and experience targets."}
+            reply = {**base, "message_class": "feasible_request_confirmation", "region": intent.region,
+                     "feasibility": "full", "periods": assessment["periods"],
+                     "assessment": "The cluster can meet the energy-saving and experience targets.",
+                     "expected_outcome": planning.expected_outcome(intent)}
+            if scenario == "multiple_solutions":
+                reply["solutions"] = planning.solutions(intent)
+                reply["assessment"] = "Feasible with any of three solutions; select one to confirm."
+            return reply
         return {**base, "message_class": "infeasible_with_proposal", "region": intent.region,
-                "reasons": assessment["reasons"], "proposal": assessment["proposal"]}
+                "feasibility": assessment["feasibility"], "periods": assessment["periods"],
+                "reasons": assessment["reasons"], "basis": "; ".join(assessment["reasons"]),
+                "proposal": assessment["proposal"], "counter_proposal": assessment.get("counter_proposal")}
 
     # Task-T ----------------------------------------------------------------
 
@@ -183,19 +238,40 @@ class MockMaeExecutor(AgentExecutor):
             await self._status(context, event_queue, TaskState.TASK_STATE_REJECTED,
                                "Intent rejected: mock scenario 'reject_task'.")
             return
+        if scenario == "semantic_rejected":
+            await self._status(context, event_queue, TaskState.TASK_STATE_REJECTED,
+                               "negotiation.semantic_rejected: task_target does not match the agreed feasibility "
+                               "assessment (mock scenario 'semantic_rejected').")
+            return
 
-        artifacts = planning.build_artifacts(intent)
+        artifacts = planning.build_artifacts(intent, partial_execution=scenario == "partial_execution")
         for index, body in enumerate(artifacts):
             await self._status(context, event_queue, TaskState.TASK_STATE_WORKING,
                                f"Region {intent.region}: {body['type']} ({index + 1}/{len(artifacts)})")
-            await asyncio.sleep(_step_delay())
+            await asyncio.sleep(_step_delay(scenario))
             if scenario == "exec_failure" and index == 2:
-                await self._status(context, event_queue, TaskState.TASK_STATE_FAILED,
-                                   "Cluster optimization failed: mock scenario 'exec_failure'.")
+                await self._fail(context, event_queue, planning.task_error(
+                    intent, "cluster_optimization_failed",
+                    "cluster optimization did not converge (mock scenario 'exec_failure')", "cluster_optimization"))
+                return
+            if scenario == "exec_timeout" and index == 4:
+                limit = _seconds("MOCK_MAE_EXEC_TIMEOUT_SECONDS", "5")
+                await asyncio.sleep(limit)
+                await self._fail(context, event_queue, planning.task_error(
+                    intent, "execution_timeout", f"cell activation did not finish within {limit:g} s", "activation"))
                 return
             await self._artifact(context, event_queue, body)
-        await self._status(context, event_queue, TaskState.TASK_STATE_COMPLETED,
-                           f"Energy-saving task completed for {intent.region}.")
+        report = artifacts[-1]
+        text = f"Energy-saving task completed for {intent.region}."
+        if report["cells"]["failed"]:
+            text = (f"Energy-saving task completed for {intent.region} with {report['cells']['failed']} of "
+                    f"{report['cells']['selected']} cells not activated (achievement partial).")
+        await self._status(context, event_queue, TaskState.TASK_STATE_COMPLETED, text)
+
+    async def _fail(self, context: RequestContext, event_queue: EventQueue, error: dict[str, Any]) -> None:
+        await self._artifact(context, event_queue, error)
+        await self._status(context, event_queue, TaskState.TASK_STATE_FAILED,
+                           f"{error['code']}: {error['reason']}")
 
     @staticmethod
     async def _status(context: RequestContext, event_queue: EventQueue, state: TaskState, text: str) -> None:
@@ -229,9 +305,13 @@ def _guess_message_class(raw: Any) -> str:
 def _negotiation_summary(reply: dict[str, Any]) -> str:
     message_class = reply.get("message_class")
     if message_class == "feasible_request_confirmation":
+        if reply.get("solutions"):
+            return f"Feasible with {len(reply['solutions'])} solutions: select one to confirm."
         return "Feasible: please confirm to proceed."
     if message_class == "infeasible_with_proposal":
-        return "Infeasible: " + "; ".join(reply.get("reasons") or []) + " A counter-proposal is attached."
+        verdict = "Partially feasible" if reply.get("feasibility") == "partial" else "Infeasible"
+        return f"{verdict}: " + "; ".join(reply.get("reasons") or []) + ". A counter-proposal is attached."
     if message_class == "negotiation_closed":
-        return f"Negotiation closed: {reply.get('outcome')}."
+        chosen = f" (solution {reply['selected_solution']})" if reply.get("selected_solution") else ""
+        return f"Negotiation closed: {reply.get('outcome')}{chosen}."
     return f"Negotiation error: {reply.get('error')}"

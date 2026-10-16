@@ -5,7 +5,7 @@ Four steps, in order:
 1. ``power_band_tariff``: the Energy Agent fetches the tariff from the price API.
 2. ``feasibility_negotiation``: the Energy Agent negotiates feasibility with MAE (Negotiation-T).
 3. ``ran_energy_saving``: the workflow engine dispatches Task-T ``ran-energy-saving/v1`` to MAE
-   and collects its six artifacts.
+   and collects its seven artifacts.
 4. ``intent_report``: the Energy Agent turns MAE's artifacts into a readable report.
 
 Steps 1, 2 and 4 are ``SelfLoop`` steps (run inside the host agent); step 3 is a

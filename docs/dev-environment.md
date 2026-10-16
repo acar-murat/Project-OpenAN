@@ -80,6 +80,7 @@ python scripts/dev.py status
 python scripts/dev.py logs energy-agent
 python scripts/dev.py down
 python scripts/dev.py test      # ruff + pytest
+python scripts/dev.py test-report  # run the tests and rewrite docs/test-cases.md
 python scripts/dev.py ci        # exactly what the CI dev-stack job runs
 ```
 
@@ -144,12 +145,18 @@ AgentCard ("Mock MAE", organisation "OpenAN Mock") in the Registry Center, so th
 Orchestration Center discovers it like a real agent.
 
 - **Negotiation-T** (`metadata[…/Negotiation-T/v1]`, JSON): `initiate_feasibility_assessment`
-  returns `feasible_request_confirmation`, or `infeasible_with_proposal` with a counter-proposal
-  when a period asks for a guaranteed rate above `MOCK_MAE_MAX_RATE_FLOOR_MBPS` (default 20).
-  `accept`, `reject` and `abort` close the negotiation.
+  returns `feasible_request_confirmation` (with `expected_outcome`: predicted monthly saving, cost
+  and energy saving percent), or `infeasible_with_proposal` when a period asks for a guaranteed rate
+  above `MOCK_MAE_MAX_RATE_FLOOR_MBPS` (default 20). Every verdict carries `feasibility`
+  (`full`, `partial` or `none`) and a per-period verdict in `periods`; an infeasible one also
+  carries `basis` and the LLD's `counter_proposal` (`adjusted_experience_target` or
+  `adjusted_saving_target`) next to the full adjusted `proposal.schedule`. `accept` (optionally
+  naming `selected_solution`), `reject` and `abort` close the negotiation. The mock is stateless:
+  a re-initiation (`round` 2 and later) carries the full context again.
 - **Task-T** `ran-energy-saving/v1` (`metadata[…/Task-T/v1]`, JSON slots `task_object`,
   `task_target.schedule`, `task_context.power_band_tariff`): streams SUBMITTED, a WORKING update
-  per step, six artifacts, then COMPLETED.
+  per step, seven artifacts, then COMPLETED. A failed task streams a `TaskError` artifact
+  (`code`, `reason`, `failed_step`) before FAILED.
 
 The artifacts follow UC1 (deck slide 2) and are this repo's **proposed MAE artifact schema**
 for open item O-11; see `mocks/mae/planning.py`:
@@ -160,13 +167,35 @@ for open item O-11; see `mocks/mae/planning.py`:
 | `BandPrediction` | per site: predicted kW, band, charge |
 | `SiteClassification` | per site: downgrade / upgrade / grade_stable, plus counts |
 | `TrafficMigrationPlan` | load moved out of / into sites and how (power, tilt, handover), active periods |
-| `EnergySavingActivated` | activated sites and the periods saving applies in (not "experience first") |
-| `IntentReport` | predicted monthly cost before / after, saving, sites changing band, schedule |
+| `CellSelection` | per cell (two capacity cells per site, L2600 and N3500; the L1800 coverage cell stays on): features per saving period (carrier/channel shutdown when maximized, symbol shutdown and TX power reduction when proactive), predicted monthly kWh saving |
+| `EnergySavingActivated` | activated sites and cells, cells that failed to activate with the reason, the periods saving applies in (not "experience first") |
+| `IntentReport` | predicted monthly cost before / after and saving, `achievement` (`full` or `partial`), energy kWh before / after and saving percent, cell counts, per-period experience KPIs (average user rate and PRB load before / after, target met), per-site band and charge before / after, schedule |
+| `TaskError` | only on failure: `code`, `reason`, `failed_step` |
+
+Scenarios (`MOCK_MAE_SCENARIO`, `metadata["mockScenario"]` for one message, or `scenario=<name>`
+in an Execution Center intent):
+
+| Scenario | Outcome | LLD |
+|---|---|---|
+| `auto` (default) | decided from the content: rate floors above the limit are infeasible (`partial` when other saving periods can be met) | §11.5 |
+| `feasible` | feasible, request confirmation | §3 |
+| `infeasible` | infeasible in every round; the proposal repeats the request | §4 F5 |
+| `partially_feasible` | hours 6-9 cannot save energy at their rate floor; the proposal makes them "experience first" (`adjusted_saving_target`) | §11.5 |
+| `multi_round` | infeasible in round 1 with rate floors lowered to 80 %; feasible from round 2 | §5.2 |
+| `multiple_solutions` | feasible with three solutions (low, medium, high experience risk) | §11.5 |
+| `negotiation_error` | MAE answers with `message_class: error` | §4 F6 |
+| `slow_negotiation` | the verdict comes after `MOCK_MAE_SLOW_SECONDS` (default 60) | §11.5 timeout |
+| `reject_task` | task REJECTED before any artifact | §5.1 |
+| `semantic_rejected` | task REJECTED with `negotiation.semantic_rejected` | §4 F7 |
+| `exec_failure` | `TaskError` `cluster_optimization_failed` after two artifacts, then FAILED | §4 F8 |
+| `exec_timeout` | `TaskError` `execution_timeout` after `MOCK_MAE_EXEC_TIMEOUT_SECONDS` (default 5), then FAILED | §5.1 |
+| `partial_execution` | COMPLETED, but every fourth selected cell fails to activate (`achievement: partial`) | §11.8 |
+| `delayed` | COMPLETED, each step waits `MOCK_MAE_SLOW_STEP_SECONDS` (default 3) | §11.6 sandbox |
+| `price_api_error`, `price_api_slow` | handled by the mock Energy Agent: it calls the price API in `error` or `slow` mode | §4 F4 |
 
 | Setting | Effect |
 |---|---|
-| `MOCK_MAE_SCENARIO` | `auto` (default), `feasible`, `infeasible`, `reject_task`, `exec_failure` |
-| `metadata["mockScenario"]` | Overrides the scenario for one message |
+| `MOCK_MAE_SCENARIO` | Default scenario (above) |
 | `MOCK_MAE_STEP_DELAY_SECONDS` | Pause between task steps (default 0.5) |
 | `REGISTRY_CENTER_URL` | Registry to register with (retries for `MOCK_MAE_REGISTER_TIMEOUT_SECONDS`, default 60) |
 
@@ -184,7 +213,7 @@ startup, saves the workflow from `mocks/energy_agent/workflow.py`:
 |---|---|---|
 | `power_band_tariff` | Energy Agent (self-loop) | `GET /v1/tariffs/power-band` on the mock price API |
 | `feasibility_negotiation` | Energy Agent (self-loop) | Policy guard, then a Negotiation-T round with MAE; accepts MAE's verdict and fails the workflow with the counter-proposal if infeasible (`closed_infeasible`), or with `policy_violation` without contacting MAE |
-| `ran_energy_saving` | Mock MAE | Task-T `ran-energy-saving/v1`, sent by the workflow engine; six artifacts |
+| `ran_energy_saving` | Mock MAE | Task-T `ran-energy-saving/v1`, sent by the workflow engine; seven artifacts |
 | `intent_report` | Energy Agent (self-loop) | Markdown report built from MAE's artifacts |
 
 The region comes from the intent ("... for Kumasi", default Accra Central); `scenario=<name>` in
@@ -198,6 +227,20 @@ Security and audit (LLD v10.4 §11.11):
 | `ENERGY_AGENT_POLICY_MIN_EXPERIENCE_FLOOR` | Lowest rate floor in Mbps a schedule period may ask for; `none` counts as 0 (empty: no floor) |
 | `ENERGY_AGENT_POLICY_MAX_SAVING_TARGET` | Highest numeric saving target (empty: no limit) |
 | `ENERGY_AGENT_AUDIT_LOG_PATH` | Hash-chained JSON-lines audit log; `dev.py` sets `.dev/logs/energy-agent-audit.jsonl` |
+
+Negotiation (LLD v10.4 §5.2, §11.5):
+
+| Variable | Meaning |
+|---|---|
+| `ENERGY_AGENT_NEGOTIATION_MAX_ROUNDS` | Rounds before the agent sends `abort` (default 3) |
+| `ENERGY_AGENT_NEGOTIATION_ROUND_TIMEOUT_SECONDS` | Wait for each MAE reply before sending `abort` (default 30) |
+| `ENERGY_AGENT_ALLOW_TARGET_RELAXATION` | `true` lets the agent re-initiate with MAE's counter-proposal, after the policy guard checks it (design decision D-1; default off: the infeasible verdict is accepted and the workflow fails with the counter-proposal) |
+| `ENERGY_AGENT_MAX_SOLUTION_RISK` | When MAE offers several solutions, the agent picks the best saving with at most this experience risk (`low`, `medium` default, `high`) |
+| `ENERGY_AGENT_PRICE_API_TIMEOUT_SECONDS` | Price API timeout (default 30); a timeout, error status or unreachable API fails the step with `energy_agent.price_api_unavailable` |
+
+The intent report shows cost, energy saving, cell counts and achievement, a KPI table per
+schedule period, and the cells that failed to activate. When MAE fails, the report step fails with
+MAE's `TaskError` code (`mae.<code>`).
 
 Check the audit chain with `python -m mocks.common.audit .dev/logs/energy-agent-audit.jsonl`.
 Caller authentication is not implemented yet (O-25), so records name the caller as unverified.
@@ -213,6 +256,9 @@ the most words with the intent; any other prompt gets a fixed "configure a real 
 `.github/workflows/ci.yml` runs on every pull request and push to `main`:
 
 - **Lint and unit tests:** ruff and pytest for `mocks/` and `scripts/`.
+- **Test cases:** `dev.py ci` also runs `test-report`, which records every documented case
+  (input, expected and actual result) and writes the test-case document; CI uploads it as the
+  `test-cases` artifact. [test-cases.md](test-cases.md) is the committed copy.
 - **Dev stack end to end:** `python scripts/dev.py ci`, which installs all three
   environments, starts the six services, runs the feasible and infeasible demos
   (requiring discovery through the Registry and visibility in the Orchestration
