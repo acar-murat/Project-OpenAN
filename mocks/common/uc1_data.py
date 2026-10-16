@@ -11,7 +11,7 @@ from copy import deepcopy
 from typing import Any
 
 #: UC1 input 2: billing band by power draw. Charges are in GHS and read as a
-#: monthly charge per site (to be confirmed, open item O-21).
+#: monthly charge per site (to be confirmed, open item O-27).
 POWER_BAND_TARIFF: dict[str, Any] = {
     "currency": "GHS",
     "billing_period": "monthly",

@@ -63,7 +63,7 @@ The five periods cover all 24 hours; the first wraps past midnight.
 
 Each site is billed by the band its power draw falls into (currency: Ghanaian
 cedi). The deck pairs this with **monthly** charging-band prediction, so the
-amount is read here as a monthly charge per site; this needs confirming (O-21).
+amount is read here as a monthly charge per site; this needs confirming (O-27).
 
 ### What the solution does
 
@@ -116,13 +116,13 @@ price table splits 18–21 / 22–23 where the intent has 18–22 / 23–5).
 
 ## 3. Differences between the deck and the LLD
 
-| # | Deck | LLD v10.2 | Consequence |
+| # | Deck | LLD v10.4 (unchanged from v10.2 on these points) | Consequence |
 |---|---|---|---|
 | D-1 | UC1 price input is a **power-band tariff** (kW band → charge in GHS). | Price skill returns `price_table[] {start_time, end_time, relative_price}`, which is the **UC2** time-of-use shape. | The price model must support band tariffs for UC1 (R-PRC-5). |
-| D-2 | The intent is a **schedule of time periods**, each with a mode and an experience target. | `saving_target` and `experience_target` are single strings. | The intent model and Task-T mapping need a schedule (R-INT-10 … R-INT-12, O-22). |
+| D-2 | The intent is a **schedule of time periods**, each with a mode and an experience target. | `saving_target` and `experience_target` are single strings. | The intent model and Task-T mapping need a schedule (R-INT-10 … R-INT-12, O-28). |
 | D-3 | Modes are an enumeration (maximized / proactive / experience first); experience targets are none, a rate floor (Mbps), or no degradation. | Free-form strings. | Validate against enumerations (R-INT-11). |
 | D-4 | All of price parsing, intent integration and A2A-T conversion sit in **OSS Agents & Apps**; OSS talks A2A-T to MAE directly. | Split across OSS, Energy Agent and Orchestration Center (the OpenAN architecture). | Accepted design choice: the Energy Agent and Orchestration Center *implement* "OSS Agents & Apps". |
 | D-5 | No negotiation step. | Multi-round feasibility negotiation (FP-002 from the design specification). | Kept, since the specification requires it; with the tariff in the intent, a counter-proposal can be stated in band and cost terms. |
 | D-6 | MAE's outputs: per-site predicted band, site classification, cluster plan, predicted electricity cost, traffic-migration actions. | Artifacts named but unspecified (O-11). | These are the expected artifact contents to ask MAE for, and the content of the report (R-RPT-4). |
-| D-7 | Optimization is **monthly**, at **cluster** level. | Not stated. | The intent needs a planning month and the region must resolve to a cluster (O-23). |
+| D-7 | Optimization is **monthly**, at **cluster** level. | Not stated. | The intent needs a planning month and the region must resolve to a cluster (O-29). |
 | D-8 | UC2 is in the deck. | Out of scope. | Unchanged; UC2 is deferred. |

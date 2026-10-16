@@ -45,6 +45,8 @@ from urllib.parse import quote
 ROOT = Path(__file__).resolve().parents[1]
 DEV = ROOT / ".dev"
 LOGS = DEV / "logs"
+#: The mock Energy Agent's hash-chained audit log (LLD v10.4 §11.11); ``dev.py ci`` verifies it.
+EA_AUDIT_LOG = LOGS / "energy-agent-audit.jsonl"
 PIDS = DEV / "pids"
 ENV_FILE = DEV / "dev.env"
 UPSTREAM = ROOT / "upstream"
@@ -77,6 +79,7 @@ SERVICES = {
         # Hosts the upstream host_agent runtime, so it runs in the Orchestration Center's virtualenv.
         "venv": "orchestration-center", "module": "mocks.energy_agent", "cwd": ROOT, "pythonpath": [ORCH_DIR],
         "health": "http://127.0.0.1:8092/.well-known/agent-card.json",
+        "env": {"ENERGY_AGENT_AUDIT_LOG_PATH": str(EA_AUDIT_LOG)},
     },
     "designer": {
         "command": ["npm", "run", "dev"], "cwd": ORCH_DIR / "workflow-designer",
@@ -386,9 +389,10 @@ def cmd_test(_args: list[str]) -> None:
     python = venv_python("mocks")
     run([python, "-m", "ruff", "check", "mocks", "scripts"], cwd=ROOT)
     run([python, "-m", "pytest", "-q", "mocks/tests"], cwd=ROOT, env=service_env())
-    # The workflow-engine validator check is skipped above (the mocks venv has no workflow_engine).
+    # The workflow-engine tests are skipped above (the mocks venv has no workflow_engine).
     run([venv_python("orchestration-center"), "-m", "pytest", "-q", "-p", "no:cacheprovider",
-         "mocks/tests/test_energy_workflow.py"], cwd=ROOT, env=service_env(SERVICES["energy-agent"]))
+         "mocks/tests/test_energy_workflow.py", "mocks/tests/test_energy_control_point.py"],
+        cwd=ROOT, env=service_env(SERVICES["energy-agent"]))
 
 
 def cmd_demo(args: list[str]) -> None:
@@ -409,6 +413,7 @@ def cmd_ci(_args: list[str]) -> None:
         cmd_demo(["--scenario", "infeasible", "--skip-orchestration"])
         cmd_demo_orch([])
         cmd_demo_orch(["--scenario", "infeasible"])
+        run([venv_python("mocks"), "-m", "mocks.common.audit", EA_AUDIT_LOG], cwd=ROOT, env=service_env())
     except BaseException:
         cmd_logs(DEFAULT_SERVICES)
         raise

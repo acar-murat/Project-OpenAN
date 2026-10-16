@@ -120,3 +120,9 @@ def test_wrong_template_is_rejected(client):
 def test_plain_message_gets_usage_hint(client):
     response = client.post("/message:send", headers=HEADERS, json=message({}))
     assert "expects a Task-T or Negotiation-T message" in response.json()["message"]["parts"][0]["text"]
+
+
+def test_accepting_an_infeasible_verdict_closes_infeasible(client):
+    closed = negotiate(client, {"message_class": "accept", "accepted": "infeasible_with_proposal",
+                                "negotiation_id": "n-2", "round": 1})
+    assert closed["outcome"] == "closed_infeasible"

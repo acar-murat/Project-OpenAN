@@ -1,11 +1,11 @@
 """End-to-end UC1 smoke run against the local dev stack.
 
-Plays the Energy Agent's part (LLD §5.3) against the mocks:
+Plays the Energy Agent's part (LLD v10.4 §11.4, §11.5) against the mocks:
 
 1. fetch the power-band tariff from the mock price API,
 2. discover the mock MAE in the Registry Center (falls back to MOCK_MAE_URL),
 3. check the Orchestration Center is up, accepts the dev login and sees the MAE,
-4. run a Negotiation-T feasibility round and accept a feasible answer,
+4. run a Negotiation-T feasibility round and accept MAE's verdict (feasible or infeasible),
 5. dispatch a Task-T ``ran-energy-saving/v1`` task and stream its artifacts.
 
 Exits non-zero if any step fails, so CI can use it as a smoke test.
@@ -110,10 +110,11 @@ async def negotiate(client: Any, region: str, tariff: dict[str, Any], scenario: 
                         NEGOTIATION_T_EXTENSION_URI)
     reply = json.loads(events[-1]["message"]["metadata"][NEGOTIATION_T_EXTENSION_URI])
     print(f"   MAE: {reply['message_class']}")
-    if reply["message_class"] != "feasible_request_confirmation":
-        for reason in reply.get("reasons", []):
-            print(f"   reason: {reason}")
+    for reason in reply.get("reasons", []):
+        print(f"   reason: {reason}")
+    if reply["message_class"] not in ("feasible_request_confirmation", "infeasible_with_proposal"):
         return reply
+    # Accept either verdict; an accepted infeasible verdict closes as closed_infeasible (LLD v10.4 §5.2).
     accept = feasibility_accept(reply)
     events = await send(client, negotiation_message(accept, FEASIBILITY_ACCEPT_REJECT_TEMPLATE_URI, scenario),
                         NEGOTIATION_T_EXTENSION_URI)

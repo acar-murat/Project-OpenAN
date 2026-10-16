@@ -65,10 +65,16 @@
       "cwd": "${workspaceFolder}",
       "python": "${workspaceFolder}/.dev/venv-orchestration-center/bin/python",
       "envFile": "${workspaceFolder}/.dev/dev.env",
-      "env": { "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/upstream/orchestration-center" },
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/upstream/orchestration-center",
+        "ENERGY_AGENT_AUDIT_LOG_PATH": "${workspaceFolder}/.dev/logs/energy-agent-audit.jsonl"
+      },
       "windows": {
         "python": "${workspaceFolder}/.dev/venv-orchestration-center/Scripts/python.exe",
-        "env": { "PYTHONPATH": "${workspaceFolder};${workspaceFolder}/upstream/orchestration-center" }
+        "env": {
+          "PYTHONPATH": "${workspaceFolder};${workspaceFolder}/upstream/orchestration-center",
+          "ENERGY_AGENT_AUDIT_LOG_PATH": "${workspaceFolder}/.dev/logs/energy-agent-audit.jsonl"
+        }
       },
       "console": "integratedTerminal",
       "justMyCode": false
