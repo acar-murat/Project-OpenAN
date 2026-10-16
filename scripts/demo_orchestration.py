@@ -9,6 +9,7 @@ Exits non-zero unless the workflow completes, or with ``--scenario infeasible``
 unless it stops at the feasibility step, so CI can use it as a smoke test.
 
     python scripts/demo_orchestration.py [--region "Accra Central"] [--scenario infeasible]
+    python scripts/demo_orchestration.py --intent "Cut the electricity bill in Kumasi" --expect-region Kumasi
 """
 
 from __future__ import annotations
@@ -49,9 +50,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--region", default="Accra Central")
     parser.add_argument("--scenario", default=None, help="mock MAE scenario, e.g. infeasible")
+    parser.add_argument("--intent", help="dispatch this wording instead of the standard UC1 intent")
+    parser.add_argument("--expect-region", help="fail unless the run's events name this region")
     args = parser.parse_args()
 
-    intent = f"Run power-band energy saving for {args.region}"
+    intent = args.intent or f"Run power-band energy saving for {args.region}"
     if args.scenario:
         intent += f" scenario={args.scenario}"
 
@@ -79,6 +82,9 @@ def main() -> int:
     workflows = {(event.get("data") or {}).get("workflow") for event in events if event.get("type") == "start"}
     if WORKFLOW_NAME not in workflows:
         print(f"\nResult: FAILED (the Orchestration Center did not pick '{WORKFLOW_NAME}')")
+        return 1
+    if args.expect_region and args.expect_region not in json.dumps(events, ensure_ascii=False):
+        print(f"\nResult: FAILED (the run did not use region '{args.expect_region}')")
         return 1
     if args.scenario == "infeasible":
         failed = any("not feasible" in json.dumps(event) for event in events if event.get("type") == "task_response")

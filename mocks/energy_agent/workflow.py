@@ -34,11 +34,13 @@ SKILL_ENERGY_SAVING = "energy-saving"
 SKILL_REPORT = "intent-report"
 
 SCENARIO = re.compile(r"\bscenario\s*[:=]\s*([a-z_]+)", re.I)
-#: "region: Kumasi" or "for Accra Central [Region]" (capitalised words after "for").
-REGION_PATTERNS = (
-    re.compile(r"\bregion\s*[:=]\s*\"?([^\"\n;,]+)", re.I),
-    re.compile(r"\bfor\s+((?:[A-Z][\w'-]*)(?:\s+[A-Z][\w'-]*)*)"),
-)
+#: Regions the mocks know (mock MAE plans any region; these are the ones the tests use).
+KNOWN_REGIONS = ("Accra Central", "Kumasi", "Tamale", "Takoradi", "Cape Coast")
+#: "region: Kumasi", a known region in any case and wording, or "for/in/at Accra Central [Region]"
+#: (capitalised words after the preposition).
+REGION_FIELD = re.compile(r"\bregion\s*[:=]\s*\"?([^\"\n;,]+)", re.I)
+KNOWN_REGION = re.compile("|".join(re.escape(region) for region in KNOWN_REGIONS), re.I)
+REGION_AFTER = re.compile(r"\b(?:for|in|at)\s+((?:[A-Z][\w'-]*)(?:\s+[A-Z][\w'-]*)*)")
 
 
 def _step(name: str, agent: str, skill: str, description: str, *, step_type: str, layer: int,
@@ -79,22 +81,34 @@ def psop() -> dict[str, Any]:
                   "Report the predicted monthly cost and saving from MAE's artifacts",
                   step_type="SelfLoop", layer=3, next_step="end", context_from=["ran_energy_saving"]),
         ],
-        "user_intent": "Power-band energy saving for a region: lower the monthly power-band charges "
-                       "while keeping the experience targets (UC1)",
-        "tags": ["energy saving", "power band", "UC1", "RAN", "MAE"],
+        # Phrased with the words users actually use (bill, electricity cost, power consumption, tariff)
+        # so workflow selection does not depend on the user saying "power-band energy saving".
+        "user_intent": "Power-band energy saving for a region: cut the sites' electricity bill and power "
+                       "consumption by lowering their monthly power-band (tariff) charges while keeping the "
+                       "experience targets (UC1)",
+        "tags": ["energy saving", "power band", "electricity cost", "power consumption", "tariff", "UC1", "RAN",
+                 "MAE"],
         "source": "template",
     }
 
 
+def find_region(intent: str) -> str | None:
+    """The region an intent names ("... for Accra Central", "in kumasi"), or None."""
+    text = SCENARIO.sub("", intent)
+    if match := REGION_FIELD.search(text):
+        region = match.group(1).strip()
+    elif match := KNOWN_REGION.search(text):
+        return next(r for r in KNOWN_REGIONS if r.lower() == match.group(0).lower())
+    elif match := REGION_AFTER.search(text):
+        region = match.group(1).strip()
+    else:
+        return None
+    return re.sub(r"\s+region$", "", region, flags=re.I) or None
+
+
 def region_of(intent: str) -> str:
-    """The region an intent names ("... for Accra Central"), or the UC1 default."""
-    for pattern in REGION_PATTERNS:
-        match = pattern.search(SCENARIO.sub("", intent))
-        if match:
-            region = re.sub(r"\s+region$", "", match.group(1).strip(), flags=re.I)
-            if region:
-                return region
-    return DEFAULT_REGION
+    """The region an intent names, or the UC1 default."""
+    return find_region(intent) or DEFAULT_REGION
 
 
 def scenario_of(intent: str) -> str | None:

@@ -205,8 +205,11 @@ Caller authentication is not implemented yet (O-25), so records name the caller 
 ### Mock LLM
 
 An OpenAI-compatible `POST /v1/chat/completions`. For the Orchestration Center's
-workflow-selection prompt it returns the workflows whose name, description, intent or tags share
-the most words with the intent; any other prompt gets a fixed "configure a real model" reply.
+workflow-selection prompt it returns the workflow whose name, description, intent or tags share
+the most concepts with the intent (synonyms such as bill, tariff and cost count as one). It also
+answers OSS's classify and extract prompts. Any other prompt gets a fixed "configure a real
+model" reply. [llm-use-cases.md](llm-use-cases.md) lists the LLM use cases, the phrasing set and
+how to run it against a real model (`scripts/llm_eval.py`).
 
 ## CI
 

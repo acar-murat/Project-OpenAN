@@ -28,6 +28,11 @@ def test_mae_step_targets_the_mock_mae_skill():
     ("Power-band energy saving for Accra Central Region.", "Accra Central", None),
     ("region: Tamale", "Tamale", None),
     ("save some energy", workflow.DEFAULT_REGION, None),
+    ("Cut the electricity bill of the sites in Kumasi", "Kumasi", None),
+    ("Lower our tariff band charges at Takoradi", "Takoradi", None),
+    ("save energy in accra central", "Accra Central", None),
+    ("We pay too much for power at the Cape Coast sites", "Cape Coast", None),
+    ("Run power-band energy saving for Sunyani", "Sunyani", None),
 ])
 def test_region_and_scenario_from_intent(intent, region, scenario):
     assert workflow.region_of(intent) == region
