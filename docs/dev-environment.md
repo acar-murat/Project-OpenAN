@@ -10,7 +10,7 @@ plus mocks that stand in for the systems that are external or not built yet:
 | Orchestration Center | 5001 | `upstream/orchestration-center` | — (real) |
 | Mock price API | 8090 | `mocks/price_api` | External price API (O-1) |
 | Mock MAE | 8091 | `mocks/mae` | MAE (O-3, O-11, O-12) |
-| Mock Energy Agent | 8092 | `mocks/energy_agent` | Energy Agent (LLD §5.3), as the Orchestration Center's host agent |
+| Mock Energy Agent | 8092 | `mocks/energy_agent` | Energy Agent (LLD v10.4 §11.4, §11.5, §11.11), as the Orchestration Center's host agent |
 | Mock LLM | 8093 | `mocks/llm` | The chat model the Orchestration Center uses to pick a workflow |
 | OpenAN console (UI) | 3003 | `upstream/orchestration-center/workflow-designer` | — (real) |
 | Registry Center UI | 3004 | `upstream/registry-center/registry-center-web` | — (real) |
@@ -183,12 +183,24 @@ startup, saves the workflow from `mocks/energy_agent/workflow.py`:
 | Step | Runs in | Does |
 |---|---|---|
 | `power_band_tariff` | Energy Agent (self-loop) | `GET /v1/tariffs/power-band` on the mock price API |
-| `feasibility_negotiation` | Energy Agent (self-loop) | Negotiation-T round with MAE; fails the workflow with MAE's counter-proposal if infeasible |
+| `feasibility_negotiation` | Energy Agent (self-loop) | Policy guard, then a Negotiation-T round with MAE; accepts MAE's verdict and fails the workflow with the counter-proposal if infeasible (`closed_infeasible`), or with `policy_violation` without contacting MAE |
 | `ran_energy_saving` | Mock MAE | Task-T `ran-energy-saving/v1`, sent by the workflow engine; six artifacts |
 | `intent_report` | Energy Agent (self-loop) | Markdown report built from MAE's artifacts |
 
 The region comes from the intent ("... for Kumasi", default Accra Central); `scenario=<name>` in
 the intent is passed to the mock MAE as `mockScenario`.
+
+Security and audit (LLD v10.4 §11.11):
+
+| Variable | Meaning |
+|---|---|
+| `ENERGY_AGENT_POLICY_REGION_ALLOWLIST` | Comma-separated regions the agent may act on (empty: any) |
+| `ENERGY_AGENT_POLICY_MIN_EXPERIENCE_FLOOR` | Lowest rate floor in Mbps a schedule period may ask for; `none` counts as 0 (empty: no floor) |
+| `ENERGY_AGENT_POLICY_MAX_SAVING_TARGET` | Highest numeric saving target (empty: no limit) |
+| `ENERGY_AGENT_AUDIT_LOG_PATH` | Hash-chained JSON-lines audit log; `dev.py` sets `.dev/logs/energy-agent-audit.jsonl` |
+
+Check the audit chain with `python -m mocks.common.audit .dev/logs/energy-agent-audit.jsonl`.
+Caller authentication is not implemented yet (O-25), so records name the caller as unverified.
 
 ### Mock LLM
 
@@ -205,5 +217,6 @@ the most words with the intent; any other prompt gets a fixed "configure a real 
   environments, starts the six services, runs the feasible and infeasible demos
   (requiring discovery through the Registry and visibility in the Orchestration
   Center), runs both again through the Orchestration Center and mock Energy Agent
-  (`demo-orch`, the path the Execution Center uses), then stops everything.
+  (`demo-orch`, the path the Execution Center uses), verifies the Energy Agent's
+  audit chain, then stops everything.
   Service logs are uploaded if it fails. The web UIs are not started in CI.

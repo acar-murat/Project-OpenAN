@@ -1,4 +1,4 @@
-"""UC1 request bodies the Energy Agent sends to MAE (LLD §7.5 and §7.7).
+"""UC1 request bodies the Energy Agent sends to MAE (LLD v10.4 §11.5 and §11.7).
 
 Shared by ``scripts/demo_uc1.py`` and the mock Energy Agent so both speak to the
 mock MAE with the same Negotiation-T and Task-T content.
@@ -33,9 +33,18 @@ def feasibility_opening(region: str, tariff: dict[str, Any]) -> dict[str, Any]:
 
 
 def feasibility_accept(reply: dict[str, Any]) -> dict[str, Any]:
-    """Accept a ``feasible_request_confirmation``."""
+    """Accept MAE's verdict: a ``feasible_request_confirmation`` (-> AGREED) or an
+    ``infeasible_with_proposal`` (-> CLOSED_INFEASIBLE; the counter-proposal goes back to the user)."""
     return {"category": "goal_achievement", "message_class": "accept",
+            "accepted": reply["message_class"],
             "negotiation_id": reply["negotiation_id"], "round": reply["round"]}
+
+
+def feasibility_abort(opening: dict[str, Any], reply: dict[str, Any]) -> dict[str, Any]:
+    """Negotiation-T ``common/abort`` after a reply the Energy Agent cannot act on."""
+    return {"category": "goal_achievement", "message_class": "abort",
+            "negotiation_id": reply.get("negotiation_id") or opening["negotiation_id"],
+            "round": reply.get("round") or opening["round"]}
 
 
 def energy_saving_slots(region: str, tariff: dict[str, Any]) -> dict[str, Any]:

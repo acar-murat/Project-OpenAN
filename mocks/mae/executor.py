@@ -2,9 +2,9 @@
 
 Routes each inbound message by the A2A-T extension it carries in ``message.metadata``:
 
-* **Negotiation-T** (feasibility negotiation, LLD §7.5): replies with one agent
+* **Negotiation-T** (feasibility negotiation, LLD v10.4 §11.5): replies with one agent
   ``Message`` whose ``metadata[Negotiation-T/v1]`` holds the reply as JSON.
-* **Task-T** (``ran-energy-saving/v1`` dispatch, LLD §7.7): streams a task through
+* **Task-T** (``ran-energy-saving/v1`` dispatch, LLD v10.4 §11.7): streams a task through
   SUBMITTED → WORKING → artifacts → COMPLETED. Each artifact's body is JSON in
   ``artifact.metadata[Task-T/v1]`` (see ``planning.build_artifacts``).
 
@@ -104,12 +104,19 @@ class MockMaeExecutor(AgentExecutor):
             reply = self._assess(content if content else raw, _scenario(metadata), negotiation_id, round_no)
             template = FEASIBILITY_PROPOSE_TEMPLATE_URI
         elif message_class in ("accept", "reject"):
+            # Accepting an infeasible verdict closes the negotiation without agreement (LLD §5.2).
+            if message_class == "reject":
+                outcome = "aborted"
+            elif content.get("accepted") == "infeasible_with_proposal":
+                outcome = "closed_infeasible"
+            else:
+                outcome = "agreed"
             reply = {
                 "category": "goal_achievement",
                 "message_class": "negotiation_closed",
                 "negotiation_id": negotiation_id,
                 "round": round_no,
-                "outcome": "agreed" if message_class == "accept" else "aborted",
+                "outcome": outcome,
             }
             template = FEASIBILITY_ACCEPT_REJECT_TEMPLATE_URI
         elif message_class == "abort":
