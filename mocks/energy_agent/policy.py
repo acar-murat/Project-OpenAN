@@ -14,6 +14,9 @@ Environment (empty means "no limit", which suits development; production sets al
 * ``ENERGY_AGENT_POLICY_MAX_SAVING_TARGET``: highest numeric ``saving_target`` (percent) an
   intent may carry. UC1 intents carry saving modes, not a number, so this applies only when one
   is given.
+* ``ENERGY_AGENT_POLICY_SAVING_WINDOWS``: comma-separated hour ranges (inclusive, may wrap past
+  midnight, e.g. ``22-6,12-14``) in which a period may ask for a saving mode other than
+  ``experience_first``. A saving period that is not wholly inside one window is refused.
 """
 
 from __future__ import annotations
@@ -34,6 +37,24 @@ class PolicyDecision:
         return {"allowed": self.allowed, "reasons": list(self.reasons)}
 
 
+#: The saving mode that changes nothing on the network, so time windows never restrict it.
+NO_SAVING_MODE = "experience_first"
+
+
+def _hours(start: int, end: int) -> set[int]:
+    """Hours from ``start`` to ``end`` inclusive, wrapping past midnight."""
+    return {hour % 24 for hour in range(start, end + 1 if end >= start else end + 25)}
+
+
+def _parse_windows(value: str | None) -> tuple[frozenset[int], ...]:
+    windows = []
+    for part in (value or "").split(","):
+        if part.strip():
+            start, _, end = part.partition("-")
+            windows.append(frozenset(_hours(int(start), int(end))))
+    return tuple(windows)
+
+
 def _optional_float(value: str | None) -> float | None:
     return float(value) if value and value.strip() else None
 
@@ -43,6 +64,7 @@ class PolicyGuard:
     region_allowlist: frozenset[str] = field(default_factory=frozenset)
     min_experience_floor_mbps: float | None = None
     max_saving_target: float | None = None
+    saving_windows: tuple[frozenset[int], ...] = ()
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> PolicyGuard:
@@ -52,6 +74,7 @@ class PolicyGuard:
             region_allowlist=frozenset(r.strip().casefold() for r in regions.split(",") if r.strip()),
             min_experience_floor_mbps=_optional_float(env.get("ENERGY_AGENT_POLICY_MIN_EXPERIENCE_FLOOR")),
             max_saving_target=_optional_float(env.get("ENERGY_AGENT_POLICY_MAX_SAVING_TARGET")),
+            saving_windows=_parse_windows(env.get("ENERGY_AGENT_POLICY_SAVING_WINDOWS")),
         )
 
     def check(self, region: str, schedule: list[dict[str, Any]],
@@ -72,4 +95,12 @@ class PolicyGuard:
         if self.max_saving_target is not None and saving_target is not None \
                 and saving_target > self.max_saving_target:
             reasons.append(f"saving target {saving_target:g} is above the {self.max_saving_target:g} limit")
+        if self.saving_windows:
+            for period in schedule:
+                if period.get("saving_mode", NO_SAVING_MODE) == NO_SAVING_MODE:
+                    continue
+                hours = _hours(int(period["start_hour"]), int(period["end_hour"]))
+                if not any(hours <= window for window in self.saving_windows):
+                    reasons.append(f"period {period['start_hour']}-{period['end_hour']} asks for "
+                                   f"{period['saving_mode']} outside the allowed saving windows")
         return PolicyDecision(allowed=not reasons, reasons=tuple(reasons))
