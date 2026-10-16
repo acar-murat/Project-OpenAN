@@ -1,7 +1,7 @@
 # Tooling for this repo's own code (mocks/, scripts/). Upstream projects under
 # upstream/ keep their own configuration.
 [tool.pytest.ini_options]
-testpaths = ["mocks/tests"]
+testpaths = ["mocks/tests", "oss/tests"]
 asyncio_mode = "auto"
 
 [tool.ruff]

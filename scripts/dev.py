@@ -79,7 +79,8 @@ SERVICES = {
         # Hosts the upstream host_agent runtime, so it runs in the Orchestration Center's virtualenv.
         "venv": "orchestration-center", "module": "mocks.energy_agent", "cwd": ROOT, "pythonpath": [ORCH_DIR],
         "health": "http://127.0.0.1:8092/.well-known/agent-card.json",
-        "env": {"ENERGY_AGENT_AUDIT_LOG_PATH": str(EA_AUDIT_LOG)},
+        # Only local callers (the Orchestration Center runs on this host); the audit log names the caller.
+        "env": {"ENERGY_AGENT_AUDIT_LOG_PATH": str(EA_AUDIT_LOG), "ENERGY_AGENT_ALLOWED_CALLERS": "ip:127.0.0.1/32"},
     },
     "designer": {
         "command": ["npm", "run", "dev"], "cwd": ORCH_DIR / "workflow-designer",
@@ -387,11 +388,12 @@ def cmd_logs(args: list[str]) -> None:
 
 def cmd_test(_args: list[str]) -> None:
     python = venv_python("mocks")
-    run([python, "-m", "ruff", "check", "mocks", "scripts"], cwd=ROOT)
-    run([python, "-m", "pytest", "-q", "mocks/tests"], cwd=ROOT, env=service_env())
+    run([python, "-m", "ruff", "check", "mocks", "oss", "scripts"], cwd=ROOT)
+    run([python, "-m", "pytest", "-q", "mocks/tests", "oss/tests"], cwd=ROOT, env=service_env())
     # The workflow-engine tests are skipped above (the mocks venv has no workflow_engine).
     run([venv_python("orchestration-center"), "-m", "pytest", "-q", "-p", "no:cacheprovider",
-         "mocks/tests/test_energy_workflow.py", "mocks/tests/test_energy_control_point.py"],
+         "mocks/tests/test_energy_workflow.py", "mocks/tests/test_energy_control_point.py",
+         "mocks/tests/test_caller_auth.py"],
         cwd=ROOT, env=service_env(SERVICES["energy-agent"]))
 
 

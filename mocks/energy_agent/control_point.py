@@ -9,8 +9,9 @@ Security and audit (LLD v10.4 §11.11): the policy guard (``policy.py``) runs
 before any Negotiation-T message goes to MAE, and every policy decision and
 negotiation round is written to the agent's own hash-chained audit log when
 ``ENERGY_AGENT_AUDIT_LOG_PATH`` is set. The workflow execution id is the
-``trace_id`` there. Caller authentication is not done yet (open item O-25), so
-records name the caller as unverified.
+``trace_id`` there. ``caller_auth.py`` authenticates the caller before the
+request reaches the runtime; the ControlPoint is built inside that request, so it
+takes the verified caller from there and names it in every record.
 """
 
 from __future__ import annotations
@@ -47,11 +48,11 @@ from mocks.common.uc1_messages import (
     feasibility_opening,
 )
 from mocks.energy_agent import workflow
+from mocks.energy_agent.caller_auth import current_caller
 from mocks.energy_agent.policy import POLICY_VIOLATION, PolicyGuard
 from mocks.mae.server import AGENT_ORGANIZATION as MAE_ORGANIZATION
 
 SCENARIO_METADATA_KEY = "mockScenario"
-UNVERIFIED_CALLER = {"user_id": None, "source_ip": None, "roles": [], "caller": "unverified (O-25)"}
 
 
 class EnergySavingControlPoint(ControlPoint):
@@ -62,6 +63,7 @@ class EnergySavingControlPoint(ControlPoint):
         self._mae_url = mae_url.rstrip("/")
         self._policy = policy or PolicyGuard()
         self._audit_log = audit_log
+        self._caller = current_caller()
         self._mae_card_digest: str | None = None
         self._region: str | None = None
         self._scenario: str | None = None
@@ -258,5 +260,5 @@ class EnergySavingControlPoint(ControlPoint):
     def _audit(self, event: str, trace_id: str, outcome: str, *, reason: str | None = None,
                detail: dict[str, Any]) -> None:
         if self._audit_log is not None:
-            self._audit_log.append(event, outcome=outcome, trace_id=trace_id, actor=UNVERIFIED_CALLER,
+            self._audit_log.append(event, outcome=outcome, trace_id=trace_id, actor=self._caller,
                                    resource={"region": self._region}, reason=reason, detail=detail)
