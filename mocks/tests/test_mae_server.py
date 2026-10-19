@@ -117,9 +117,11 @@ def test_wrong_template_is_rejected(client):
     assert final_state(events) == "TASK_STATE_REJECTED"
 
 
-def test_plain_message_gets_usage_hint(client):
+def test_plain_message_without_parameters_fails_with_usage_hint(client):
     response = client.post("/message:send", headers=HEADERS, json=message({}))
-    assert "expects a Task-T or Negotiation-T message" in response.json()["message"]["parts"][0]["text"]
+    status = response.json()["task"]["status"]
+    assert status["state"] == "TASK_STATE_FAILED"
+    assert "未解析出任务参数" in status["message"]["parts"][0]["text"]
 
 
 def test_accepting_an_infeasible_verdict_closes_infeasible(client):

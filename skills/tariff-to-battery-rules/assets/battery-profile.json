@@ -1,0 +1,11 @@
+{
+  "_note": "PLACEHOLDER battery and site figures for the Henan demo. Replace with the real site survey values (battery model, capacity, rectifier limits, outage reserve).",
+  "capacity_kwh": 14.4,
+  "charge_power_kw": 3.0,
+  "discharge_power_kw": 3.0,
+  "site_load_kw": 2.0,
+  "soc_min_pct": 40,
+  "soc_max_pct": 95,
+  "efficiency": 0.9,
+  "days_per_month": 30
+}

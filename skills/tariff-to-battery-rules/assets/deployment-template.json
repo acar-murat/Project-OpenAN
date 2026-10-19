@@ -1,0 +1,21 @@
+{
+  "_note": "PLACEHOLDER layout. HQ has not supplied the Deployment import template yet. Replace 'columns' with the real headers; 'field' names a value the script computes, 'value' is a fixed string. Fields: site_id, rule_id, start, end, tier, tier_label, price, action, action_code, power_kw, energy_kwh, soc_start_pct, soc_end_pct, soc_min_pct, soc_max_pct, effective_date.",
+  "template_id": "PLACEHOLDER-deployment-battery-strategy-v0",
+  "placeholder": true,
+  "encoding": "utf-8-sig",
+  "include_hold_rows": false,
+  "action_codes": {"charge": "CHARGE", "discharge": "DISCHARGE", "hold": "IDLE"},
+  "columns": [
+    {"header": "NE Name", "field": "site_id"},
+    {"header": "Power Vendor", "value": "Huawei"},
+    {"header": "Rule ID", "field": "rule_id"},
+    {"header": "Start Time", "field": "start"},
+    {"header": "End Time", "field": "end"},
+    {"header": "Action", "field": "action_code"},
+    {"header": "Power (kW)", "field": "power_kw"},
+    {"header": "SoC Lower Limit (%)", "field": "soc_min_pct"},
+    {"header": "SoC Upper Limit (%)", "field": "soc_max_pct"},
+    {"header": "Tariff Tier", "field": "tier"},
+    {"header": "Effective Date", "field": "effective_date"}
+  ]
+}

@@ -8,6 +8,13 @@ Routes each inbound message by the A2A-T extension it carries in ``message.metad
   SUBMITTED → WORKING → artifacts → COMPLETED. Each artifact's body is JSON in
   ``artifact.metadata[Task-T/v1]`` (see ``planning.build_artifacts``).
 
+Without either extension the message is read the way the RAN adapter reads it (HQ's A2A-T
+client plugin, docs/henan-demo.md): parameters come from ``metadata.taskParameters``, a DataPart,
+or the text as a JSON block or ``key: value`` lines. ``issueId`` / ``objectId`` / ``problemType``
+make an optimisation work order (``mocks.mae.optimization``); a ``region`` makes an energy-saving
+task; the ``energy-saving`` skill without a region asks for one (INPUT_REQUIRED); anything else
+fails with ``未解析出任务参数``.
+
 Content is read as JSON where possible. Unlike the real MAE, the mock does not
 run the A2A-T SDK's LLM-based prompt validation, so it is deterministic and
 needs no LLM.
@@ -49,7 +56,7 @@ from mocks.common.a2at import (
     TASK_T_EXTENSION_URI,
     TEMPLATE_URI_METADATA_KEY,
 )
-from mocks.mae import planning
+from mocks.mae import optimization, planning
 
 SCENARIOS = ("auto", "feasible", "infeasible", "reject_task", "exec_failure")
 SCENARIO_METADATA_KEY = "mockScenario"
@@ -72,21 +79,93 @@ def _agent_message(context_id: str, task_id: str | None, text: str) -> Message:
     return message
 
 
+ENERGY_SAVING_SKILL = "energy-saving"
+OPTIMIZATION_SKILL = "ran-complaint-optimization"
+
+
+def _plain_parameters(message: Message | None, metadata: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """Parameters of a message without a Task-T payload, by the adapter's priority:
+    ``metadata.taskParameters``, then a DataPart, then the text."""
+    if message is None:
+        return {}, ""
+    parts = MessageToDict(message).get("parts", [])
+    text = "\n".join(part["text"] for part in parts if isinstance(part.get("text"), str))
+    if isinstance(metadata.get("taskParameters"), dict):
+        return metadata["taskParameters"], text
+    for part in parts:
+        if isinstance(part.get("data"), dict):
+            return part["data"], text
+    return optimization.parse_parameters(text), text
+
+
 class MockMaeExecutor(AgentExecutor):
+    def __init__(self, work_orders: optimization.WorkOrderStore | None = None) -> None:
+        self.work_orders = work_orders or optimization.WorkOrderStore()
+
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         message = context.message
         metadata = MessageToDict(message.metadata) if message is not None and message.metadata else {}
         if NEGOTIATION_T_EXTENSION_URI in metadata:
             await self._negotiate(context, event_queue, metadata)
         elif TASK_T_EXTENSION_URI in metadata:
-            await self._run_task(context, event_queue, metadata)
+            await self._run_task(context, event_queue, metadata, metadata[TASK_T_EXTENSION_URI])
         else:
-            reply = _agent_message(
-                context.context_id or "", None,
-                "Mock MAE expects a Task-T or Negotiation-T message "
-                f"(metadata key {TASK_T_EXTENSION_URI} or {NEGOTIATION_T_EXTENSION_URI}).",
-            )
-            await event_queue.enqueue_event(reply)
+            await self._plain(context, event_queue, metadata)
+
+    async def _plain(self, context: RequestContext, event_queue: EventQueue, metadata: dict[str, Any]) -> None:
+        params, text = _plain_parameters(context.message, metadata)
+        skill = str(metadata.get("skill") or "")
+        if skill == OPTIMIZATION_SKILL or optimization.looks_like_work_order(params):
+            await self._work_order(context, event_queue, params)
+            return
+        content: Any = params if params.get("region") or params.get("task_object") else text
+        try:
+            planning.parse_intent(content)
+        except planning.IntentError:
+            if skill == ENERGY_SAVING_SKILL:
+                await self._submitted(context, event_queue, "Energy-saving request received.")
+                await self._status(context, event_queue, TaskState.TASK_STATE_INPUT_REQUIRED,
+                                   "请补充：目标区域 region（例如 region: Zhengzhou）。"
+                                   "Please supply the target region, e.g. 'region: Zhengzhou'.")
+                return
+            await self._submitted(context, event_queue, "Request received.")
+            await self._status(context, event_queue, TaskState.TASK_STATE_FAILED,
+                               f"{optimization.UNPARSED}：请以 JSON 块或「键: 值」行给出参数。"
+                               f"Work order: issueId, objectId (cell CGI), problemType, rat (default NR). "
+                               f"Energy saving: region. Or send a Task-T / Negotiation-T message "
+                               f"(metadata key {TASK_T_EXTENSION_URI} or {NEGOTIATION_T_EXTENSION_URI}).")
+            return
+        await self._run_task(context, event_queue, metadata, content)
+
+    async def _work_order(self, context: RequestContext, event_queue: EventQueue, params: dict[str, Any]) -> None:
+        await self._submitted(context, event_queue, "工单请求已受理 Work-order request accepted.")
+        try:
+            result = self.work_orders.submit(optimization.validate(params))
+        except optimization.WorkOrderError as exc:
+            await self._status(context, event_queue, TaskState.TASK_STATE_FAILED, f"工单创建失败：{exc}")
+            return
+        body = result["serviceManagement"]["RanOptimizationResult"]
+        await self._status(context, event_queue, TaskState.TASK_STATE_WORKING,
+                           f"工单 {body['issueId']} {body['workOrderStatus']}，诊断中 diagnosing")
+        await asyncio.sleep(_step_delay())
+        artifact = Artifact(artifact_id=str(uuid.uuid4()), name="RanOptimizationResult")
+        artifact.parts.add(text=json.dumps(result, ensure_ascii=False))
+        await event_queue.enqueue_event(TaskArtifactUpdateEvent(
+            task_id=context.task_id or "", context_id=context.context_id or "", artifact=artifact, last_chunk=True,
+        ))
+        await self._status(context, event_queue, TaskState.TASK_STATE_COMPLETED,
+                           f"工单 {body['issueId']}：{body['rootCause']}")
+
+    @staticmethod
+    async def _submitted(context: RequestContext, event_queue: EventQueue, text: str) -> None:
+        await event_queue.enqueue_event(Task(
+            id=context.task_id or "",
+            context_id=context.context_id or "",
+            status=TaskStatus(
+                state=TaskState.TASK_STATE_SUBMITTED,
+                message=_agent_message(context.context_id or "", context.task_id, text),
+            ),
+        ))
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         await self._status(context, event_queue, TaskState.TASK_STATE_CANCELED, "Task cancelled.")
@@ -157,17 +236,10 @@ class MockMaeExecutor(AgentExecutor):
 
     # Task-T ----------------------------------------------------------------
 
-    async def _run_task(self, context: RequestContext, event_queue: EventQueue, metadata: dict[str, Any]) -> None:
+    async def _run_task(self, context: RequestContext, event_queue: EventQueue, metadata: dict[str, Any],
+                        content: Any) -> None:
         scenario = _scenario(metadata)
-        task = Task(
-            id=context.task_id or "",
-            context_id=context.context_id or "",
-            status=TaskStatus(
-                state=TaskState.TASK_STATE_SUBMITTED,
-                message=_agent_message(context.context_id or "", context.task_id, "Energy-saving task accepted."),
-            ),
-        )
-        await event_queue.enqueue_event(task)
+        await self._submitted(context, event_queue, "Energy-saving task accepted.")
 
         template = str(metadata.get(TEMPLATE_URI_METADATA_KEY) or ENERGY_SAVING_TEMPLATE_URI)
         if template != ENERGY_SAVING_TEMPLATE_URI:
@@ -175,7 +247,7 @@ class MockMaeExecutor(AgentExecutor):
                                f"Unsupported template {template}; expected {ENERGY_SAVING_TEMPLATE_URI}.")
             return
         try:
-            intent = planning.parse_intent(metadata[TASK_T_EXTENSION_URI])
+            intent = planning.parse_intent(content)
         except planning.IntentError as exc:
             await self._status(context, event_queue, TaskState.TASK_STATE_REJECTED, f"Intent rejected: {exc}")
             return

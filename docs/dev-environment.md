@@ -12,6 +12,7 @@ plus mocks that stand in for the systems that are external or not built yet:
 | Mock MAE | 8091 | `mocks/mae` | MAE (O-3, O-11, O-12) |
 | Mock Energy Agent | 8092 | `mocks/energy_agent` | Energy Agent (LLD v10.4 §11.4, §11.5, §11.11), as the Orchestration Center's host agent |
 | Mock LLM | 8093 | `mocks/llm` | The chat model the Orchestration Center uses to pick a workflow |
+| Henan demo page | 8094 | `henan_demo` | — (demo UI, see [henan-demo.md](henan-demo.md)) |
 | OpenAN console (UI) | 3003 | `upstream/orchestration-center/workflow-designer` | — (real) |
 | Registry Center UI | 3004 | `upstream/registry-center/registry-center-web` | — (real) |
 
@@ -150,6 +151,11 @@ Orchestration Center discovers it like a real agent.
 - **Task-T** `ran-energy-saving/v1` (`metadata[…/Task-T/v1]`, JSON slots `task_object`,
   `task_target.schedule`, `task_context.power_band_tariff`): streams SUBMITTED, a WORKING update
   per step, six artifacts, then COMPLETED.
+- **Plain messages**, as HQ's A2A-T client plugin sends them: parameters from
+  `metadata.taskParameters`, a DataPart, or the text (JSON block or `key: value` lines). A region
+  runs the energy-saving task; `issueId` / `objectId` / `problemType` make a complaint work order
+  (`ran-complaint-optimization`), with results also served at `/ops/omc/status` and
+  `/ops/omc/advice`. The card is served at `/` too. See [henan-demo.md](henan-demo.md#a2a-t-plugin-contract).
 
 The artifacts follow UC1 (deck slide 2) and are this repo's **proposed MAE artifact schema**
 for open item O-11; see `mocks/mae/planning.py`:

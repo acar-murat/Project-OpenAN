@@ -8,13 +8,14 @@
     python scripts/dev.py status
     python scripts/dev.py logs SERVICE     # print a service's log
     python scripts/dev.py down             # stop everything started by `up`
-    python scripts/dev.py test             # ruff + pytest for mocks/ and scripts/
+    python scripts/dev.py test             # ruff + pytest for mocks/, henan_demo/, skills/ and scripts/
     python scripts/dev.py demo [ARGS...]   # run scripts/demo_uc1.py against the running stack
     python scripts/dev.py demo-orch [ARGS...]  # run UC1 through the Orchestration Center, as the UI does
     python scripts/dev.py ci               # setup, test, up, demo, down (what CI runs)
 
 Services, in start order: registry (5000), llm (8093), orchestration (5001),
-price-api (8090), mae (8091), energy-agent (8092). The two web UIs need Node and
+price-api (8090), mae (8091), energy-agent (8092), henan-demo (8094, the Henan Mobile
+battery-strategy page). The two web UIs need Node and
 start only when named or with ``--ui``: ``designer`` (OpenAN console with the
 Orchestration Center, 3003) and ``registry-web`` (Registry Center UI, 3004).
 
@@ -81,6 +82,7 @@ SERVICES = {
         "health": "http://127.0.0.1:8092/.well-known/agent-card.json",
         "env": {"ENERGY_AGENT_AUDIT_LOG_PATH": str(EA_AUDIT_LOG)},
     },
+    "henan-demo": {"venv": "mocks", "module": "henan_demo", "cwd": ROOT, "health": "http://127.0.0.1:8094/health"},
     "designer": {
         "command": ["npm", "run", "dev"], "cwd": ORCH_DIR / "workflow-designer",
         "health": "http://127.0.0.1:3003/",
@@ -90,7 +92,7 @@ SERVICES = {
         "health": "http://127.0.0.1:3004/",
     },
 }
-DEFAULT_SERVICES = ["registry", "llm", "orchestration", "price-api", "mae", "energy-agent"]
+DEFAULT_SERVICES = ["registry", "llm", "orchestration", "price-api", "mae", "energy-agent", "henan-demo"]
 UI_SERVICES = ["designer", "registry-web"]
 #: Services that register an AgentCard: (organization, agent name).
 REGISTERS = {"mae": ("OpenAN Mock", "Mock MAE"), "energy-agent": ("OpenAN Mock", "Mock Energy Agent")}
@@ -387,8 +389,8 @@ def cmd_logs(args: list[str]) -> None:
 
 def cmd_test(_args: list[str]) -> None:
     python = venv_python("mocks")
-    run([python, "-m", "ruff", "check", "mocks", "scripts"], cwd=ROOT)
-    run([python, "-m", "pytest", "-q", "mocks/tests"], cwd=ROOT, env=service_env())
+    run([python, "-m", "ruff", "check", "mocks", "henan_demo", "skills", "scripts"], cwd=ROOT)
+    run([python, "-m", "pytest", "-q", "mocks/tests", "henan_demo/tests"], cwd=ROOT, env=service_env())
     # The workflow-engine tests are skipped above (the mocks venv has no workflow_engine).
     run([venv_python("orchestration-center"), "-m", "pytest", "-q", "-p", "no:cacheprovider",
          "mocks/tests/test_energy_workflow.py", "mocks/tests/test_energy_control_point.py"],

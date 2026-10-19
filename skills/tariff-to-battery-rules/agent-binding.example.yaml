@@ -1,0 +1,5 @@
+# Add to the energy-scenario agent's agent.yaml (OpenTalon / NextAgent) to bind this Skill.
+# The Skill folder goes under configRoot/skills/ (system level, restart needed) or
+# configRoot/agents/<agentId>/skills/ (agent-owned, picked up on the next request).
+capabilityBindings:
+  - { capabilityId: tariff-to-battery-rules, capabilityType: SKILL, providerId: local-skills-system, enabled: true }
