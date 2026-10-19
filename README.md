@@ -27,6 +27,7 @@ See [docs/dev-environment.md](docs/dev-environment.md) for details, the mocks, a
 - [Requirements](docs/requirements.md): functional and non-functional requirements traced to the LLD, open items, and findings from the upstream code.
 - [Development backlog](docs/development-backlog.md): milestones, work items, blockers, and feature requests for upstream.
 - [Development environment](docs/dev-environment.md): running the stack locally and in VS Code, the mock price API and mock MAE, and CI.
+- [Next-phase plan](docs/next-phase-plan.md): what is left for the basic feature, and the DFX, LLM, robustness and security work after it.
 
 ## Upstream repositories
 
