@@ -15,6 +15,9 @@ python scripts/dev.py demo-orch  # UC1 through the Orchestration Center, as the 
 python scripts/dev.py down
 ```
 
+The Henan Mobile demo page (tiered tariff to battery charge/discharge strategy and Deployment CSV)
+runs at <http://127.0.0.1:8094>; see [docs/henan-demo.md](docs/henan-demo.md).
+
 To watch UC1 in the browser, open <http://127.0.0.1:3003>, log in as `admin` with
 `ORCH_AUTH_PASSWORD` from `.dev/dev.env`, go to **Execution Center**, pick **Mock Energy Agent**
 as host agent, type `Run power-band energy saving for Accra Central` and press **Dispatch**.
@@ -26,6 +29,7 @@ See [docs/dev-environment.md](docs/dev-environment.md) for details, the mocks, a
 - [Use cases](docs/use-cases.md): the original requirement deck ([pptx](docs/source/Open_AN_UC.pptx)) transcribed, with where the LLD differs from it.
 - [Requirements](docs/requirements.md): functional and non-functional requirements traced to the LLD, open items, and findings from the upstream code.
 - [Development backlog](docs/development-backlog.md): milestones, work items, blockers, and feature requests for upstream.
+- [Henan Mobile phase-1 demo](docs/henan-demo.md): the tariff-to-battery-strategy page, the OpenTalon Skill, and the mocks checked against HQ's A2A-T client plugin.
 - [Development environment](docs/dev-environment.md): running the stack locally and in VS Code, the mock price API and mock MAE, and CI.
 
 ## Upstream repositories

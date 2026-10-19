@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>节能场景 · Battery Strategy Demo</title>
+<style>
+  :root {
+    --bg: #f4f6f9; --panel: #ffffff; --ink: #1d2733; --muted: #5d6b7a; --line: #dfe4ea;
+    --accent: #c7000b; --accent-ink: #ffffff; --ok: #1f8a4c; --warn: #a15c00; --warn-bg: #fff4e0;
+    --sharp: #b3261e; --peak: #e8710a; --flat: #9aa5b1; --valley: #1a73e8;
+    --charge: #1a73e8; --discharge: #e8710a; --soc: #1f8a4c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.5 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+  header { background: #1d2733; color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 16px;
+           flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header .sub { color: #b8c2cc; font-size: 13px; }
+  .badge { margin-left: auto; background: var(--warn-bg); color: var(--warn); border-radius: 4px; padding: 3px 10px;
+           font-size: 12px; font-weight: 600; }
+  main { max-width: 1280px; margin: 0 auto; padding: 20px 16px 40px; display: grid; gap: 20px; }
+  section.fn { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px 20px; }
+  section.fn > h2 { margin: 0 0 4px; font-size: 16px; }
+  section.fn > h2 small { color: var(--muted); font-weight: 400; margin-left: 8px; }
+  .steps { display: grid; grid-template-columns: minmax(280px, 360px) 1fr; gap: 20px; margin-top: 14px; }
+  @media (max-width: 900px) { .steps { grid-template-columns: 1fr; } }
+  h3 { font-size: 14px; margin: 0 0 8px; }
+  h3 .n { display: inline-block; width: 20px; height: 20px; border-radius: 50%; background: var(--accent);
+          color: var(--accent-ink); text-align: center; line-height: 20px; font-size: 12px; margin-right: 6px; }
+  label { display: block; color: var(--muted); font-size: 12px; margin: 10px 0 4px; }
+  textarea, input[type=text], input[type=number] { width: 100%; border: 1px solid var(--line); border-radius: 4px;
+           padding: 6px 8px; font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; color: var(--ink); }
+  textarea { resize: vertical; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+  button { border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 4px; padding: 6px 12px;
+           font: inherit; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .error { color: var(--sharp); font-size: 12px; margin-top: 8px; white-space: pre-wrap; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 5px 8px; text-align: left; white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; background: #f8f9fb; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .scroll { overflow-x: auto; }
+  .tier { display: inline-block; border-radius: 3px; padding: 0 6px; color: #fff; font-size: 11px; }
+  .tier.sharp { background: var(--sharp); } .tier.peak { background: var(--peak); }
+  .tier.flat { background: var(--flat); } .tier.valley { background: var(--valley); }
+  .act { font-weight: 600; } .act.charge { color: var(--charge); } .act.discharge { color: var(--discharge); }
+  .act.hold { color: var(--muted); font-weight: 400; }
+  .note { background: var(--warn-bg); color: var(--warn); border-radius: 4px; padding: 6px 10px; font-size: 12px;
+          margin: 8px 0; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .chart { width: 100%; height: auto; display: block; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin: 6px 0 10px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px;
+              vertical-align: -1px; }
+  main > *, .steps > *, .cols3 > * { min-width: 0; }
+  .cols3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 14px; }
+  @media (max-width: 1000px) { .cols3 { grid-template-columns: 1fr; } }
+  .card { border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+  .chips span { display: inline-block; border-radius: 12px; padding: 1px 9px; margin: 2px 4px 2px 0; font-size: 12px;
+                border: 1px solid var(--line); }
+  .chips .c { color: var(--charge); border-color: var(--charge); }
+  .chips .d { color: var(--discharge); border-color: var(--discharge); }
+  pre { background: #f8f9fb; border: 1px solid var(--line); border-radius: 4px; padding: 8px; font-size: 11px;
+        max-height: 220px; overflow: auto; margin: 6px 0 0; }
+  ol.track { list-style: none; padding: 0; margin: 0; }
+  ol.track li { position: relative; padding: 0 0 12px 26px; }
+  ol.track li::before { content: ""; position: absolute; left: 6px; top: 4px; width: 10px; height: 10px;
+                        border-radius: 50%; border: 2px solid var(--line); background: #fff; }
+  ol.track li.done::before { background: var(--ok); border-color: var(--ok); }
+  ol.track li.wait::before { border-color: var(--warn); }
+  ol.track li .t { font-weight: 600; } ol.track li .d { color: var(--muted); font-size: 12px; }
+  .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .kpi { background: #f8f9fb; border-radius: 6px; padding: 10px; }
+  .kpi .v { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kpi .l { color: var(--muted); font-size: 12px; }
+  .ok { color: var(--ok); font-weight: 600; }
+  .empty { color: var(--muted); font-size: 13px; padding: 30px 0; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>网优平台 · 节能场景</h1>
+  <span class="sub">阶梯电价 → 电池充放电策略 → Deployment 导入 &nbsp;|&nbsp; Tiered tariff → battery charge/discharge strategy</span>
+  <span class="badge">演示环境 Demo only · 不下发现网 Not delivered to the live network</span>
+</header>
+<main>
+  <section class="fn" id="fn1">
+    <h2>功能一：充放电策略生成<small>Function 1: strategy generation</small></h2>
+    <div class="steps">
+      <div>
+        <h3><span class="n">1</span>导入阶梯电价 Import tariff</h3>
+        <div class="row">
+          <input type="file" id="file" accept=".csv,text/csv">
+          <button id="sample">载入示例 Load sample</button>
+        </div>
+        <label for="tariff">电价规则 Tariff (start_time,end_time,tier,price · CNY/kWh)</label>
+        <textarea id="tariff" rows="10" spellcheck="false"></textarea>
+        <label for="sites">站点 Sites (NE names, one per line)</label>
+        <textarea id="sites" rows="4" spellcheck="false"></textarea>
+        <details>
+          <summary>电池参数 Battery profile (placeholder values)</summary>
+          <div class="grid2" id="battery"></div>
+        </details>
+        <div class="row" style="margin-top:12px">
+          <button class="primary" id="generate">生成策略 Generate strategy</button>
+        </div>
+        <div class="error" id="err"></div>
+      </div>
+      <div>
+        <h3><span class="n">2</span>充放电策略 Generated strategy</h3>
+        <div id="strategy"><div class="empty">导入电价后生成策略 · Import a tariff and generate the strategy</div></div>
+      </div>
+    </div>
+    <div style="margin-top:18px">
+      <h3><span class="n">3</span>导出策略 Export for Deployment</h3>
+      <div id="export"><div class="muted">生成策略后可导出 CSV · Generate a strategy first.</div></div>
+    </div>
+  </section>
+
+  <section class="fn" id="fn2">
+    <h2>功能二：节能特性激活<small>Function 2: activation and status</small></h2>
+    <div class="cols3">
+      <div class="card">
+        <h3>节电策略 Strategy</h3>
+        <div id="policy" class="muted">—</div>
+      </div>
+      <div class="card">
+        <h3>节电生效情况 Activation</h3>
+        <ol class="track" id="track"></ol>
+        <button id="activate" disabled>模拟激活 Simulate activation</button>
+        <div class="scroll" id="siteStatus"></div>
+      </div>
+      <div class="card">
+        <h3>节电成效 Results</h3>
+        <div id="results" class="muted">—</div>
+      </div>
+    </div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (n, d = 2) => Number(n).toLocaleString("zh-CN", { minimumFractionDigits: d, maximumFractionDigits: d });
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const TIER = { sharp: "尖峰 Sharp", peak: "高峰 Peak", flat: "平段 Flat", valley: "低谷 Valley" };
+const ACT = { charge: "充电 Charge", discharge: "放电 Discharge", hold: "保持 Hold" };
+const BATTERY_FIELDS = [
+  ["capacity_kwh", "容量 Capacity (kWh)"], ["site_load_kw", "站点负载 Site load (kW)"],
+  ["charge_power_kw", "充电功率 Charge (kW)"], ["discharge_power_kw", "放电功率 Discharge (kW)"],
+  ["soc_min_pct", "SoC 下限 Floor (%)"], ["soc_max_pct", "SoC 上限 Ceiling (%)"],
+  ["efficiency", "效率 Efficiency"], ["days_per_month", "天/月 Days per month"],
+];
+const state = { result: null, exported: false, activated: false };
+
+async function init() {
+  const config = await (await fetch("api/config")).json();
+  $("battery").innerHTML = BATTERY_FIELDS.map(([k, l]) =>
+    `<div><label for="b_${k}">${l}</label><input type="number" step="any" id="b_${k}" value="${config.battery[k]}"></div>`).join("");
+  $("sites").value = ["HN-ZZ-BTS-0001", "HN-ZZ-BTS-0002", "HN-ZZ-BTS-0003", "HN-ZZ-BTS-0004", "HN-ZZ-BTS-0005"].join("\n");
+  await loadSample();
+  renderTrack();
+}
+
+async function loadSample() { $("tariff").value = await (await fetch("api/sample-tariff")).text(); }
+
+function request() {
+  const battery = {};
+  for (const [k] of BATTERY_FIELDS) battery[k] = Number($(`b_${k}`).value);
+  return { tariff_csv: $("tariff").value, sites: $("sites").value.split(/[\n,]/), battery };
+}
+
+async function generate() {
+  $("err").textContent = "";
+  const res = await fetch("api/strategy", { method: "POST", headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify(request()) });
+  const body = await res.json();
+  if (!res.ok) {
+    $("err").textContent = typeof body.detail === "string" ? body.detail
+      : (body.detail || []).map((d) => `${(d.loc || []).slice(1).join(".")}: ${d.msg}`).join("\n");
+    return;
+  }
+  Object.assign(state, { result: body, exported: false, activated: false });
+  renderStrategy(); renderExport(); renderPolicy(); renderTrack(); renderResults(); renderSites();
+  $("activate").disabled = false;
+}
+
+function chart(r) {
+  const W = 760, H = 240, L = 44, R = 40, T = 24, B = 34, pw = W - L - R, ph = H - T - B;
+  const maxPrice = Math.max(...r.tariff.map((p) => p.price)) * 1.15;
+  const x = (hm) => { const [h, m] = hm.split(":").map(Number); return L + ((h * 60 + m) / 1440) * pw; };
+  const yp = (p) => T + ph - (p / maxPrice) * ph;
+  const ys = (s) => T + ph - (s / 100) * ph;
+  let g = "";
+  for (let i = 0; i <= 4; i++) {
+    const v = (maxPrice / 4) * i, y = yp(v);
+    g += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="var(--line)"/>` +
+         `<text x="${L - 6}" y="${y + 4}" font-size="10" text-anchor="end" fill="var(--muted)">${v.toFixed(2)}</text>`;
+  }
+  for (let h = 0; h <= 24; h += 3)
+    g += `<text x="${L + (h / 24) * pw}" y="${H - B + 14}" font-size="10" text-anchor="middle" fill="var(--muted)">${String(h).padStart(2, "0")}:00</text>`;
+  for (const p of r.tariff) {
+    const x0 = x(p.start), x1 = x(p.end);
+    g += `<rect x="${x0 + 0.5}" y="${yp(p.price)}" width="${x1 - x0 - 1}" height="${T + ph - yp(p.price)}" fill="var(--${p.tier})" opacity="0.28"/>`;
+  }
+  for (const rule of r.rules) {
+    if (rule.action === "hold") continue;
+    const x0 = x(rule.start), x1 = x(rule.end);
+    g += `<rect x="${x0 + 0.5}" y="${H - B + 20}" width="${x1 - x0 - 1}" height="8" rx="2" fill="var(--${rule.action})"/>`;
+  }
+  let path = "";
+  r.rules.forEach((rule, i) => {
+    path += `${i ? "L" : "M"}${x(rule.start)},${ys(rule.soc_start_pct)} L${x(rule.end)},${ys(rule.soc_end_pct)} `;
+  });
+  g += `<path d="${path}" fill="none" stroke="var(--soc)" stroke-width="2"/>`;
+  for (let s = 0; s <= 100; s += 25)
+    g += `<text x="${W - R + 6}" y="${ys(s) + 4}" font-size="10" fill="var(--soc)">${s}%</text>`;
+  g += `<text x="${L}" y="${T - 12}" font-size="10" fill="var(--muted)">CNY/kWh</text>` +
+       `<text x="${W - R + 6}" y="${T - 12}" font-size="10" fill="var(--soc)">SoC</text>`;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Tariff, charge/discharge windows and battery SoC over 24 hours">${g}</svg>`;
+}
+
+function renderStrategy() {
+  const r = state.result, s = r.summary;
+  const legend = Object.keys(TIER).map((t) => `<span><i style="background:var(--${t});opacity:.5"></i>${TIER[t]}</span>`).join("") +
+    `<span><i style="background:var(--charge)"></i>充电 Charge</span><span><i style="background:var(--discharge)"></i>放电 Discharge</span>` +
+    `<span><i style="background:var(--soc)"></i>SoC</span>`;
+  const rows = r.rules.map((x) => `<tr><td>${x.rule_id}</td><td>${x.start}–${x.end}</td>` +
+    `<td><span class="tier ${x.tier}">${TIER[x.tier]}</span></td><td class="num">${x.price.toFixed(4)}</td>` +
+    `<td class="act ${x.action}">${ACT[x.action]}</td><td class="num">${fmt(x.power_kw)}</td>` +
+    `<td class="num">${fmt(x.energy_kwh)}</td><td class="num">${x.soc_start_pct}% → ${x.soc_end_pct}%</td></tr>`).join("");
+  $("strategy").innerHTML = chart(r) + `<div class="legend">${legend}</div>` +
+    `<div class="scroll"><table><thead><tr><th>规则</th><th>时段 Window</th><th>电价档 Tier</th><th class="num">电价 Price</th>` +
+    `<th>动作 Action</th><th class="num">功率 kW</th><th class="num">电量 kWh</th><th class="num">SoC</th></tr></thead>` +
+    `<tbody>${rows}</tbody></table></div>` +
+    `<div class="muted" style="margin-top:6px">每站日电费 Daily cost per site: ${fmt(s.daily_cost_before)} → ` +
+    `<b>${fmt(s.daily_cost_after)}</b> CNY (−${s.saving_pct}%). SoC 下限 ${r.battery.soc_min_pct}% 为停电备电，不参与套利 · The SoC floor is the outage reserve.</div>`;
+}
+
+function renderExport() {
+  const p = state.result.deployment_preview;
+  const head = p.header.map((h) => `<th>${esc(h)}</th>`).join("");
+  const rows = p.rows.map((r) => `<tr>${r.map((v) => `<td>${esc(v)}</td>`).join("")}</tr>`).join("");
+  $("export").innerHTML = (p.placeholder ? `<div class="note">Deployment 模板列为占位 · Placeholder columns (${esc(p.template_id)}): ` +
+      `HQ has not supplied the Deployment template yet. Edit <code>skills/tariff-to-battery-rules/assets/deployment-template.json</code> to switch.</div>` : "") +
+    `<div class="scroll"><table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>` +
+    `<div class="row" style="margin-top:8px"><button class="primary" id="download">导出策略 Export CSV</button>` +
+    `<span class="muted">${p.row_count} 行 rows · ${state.result.sites.length} 站点 sites · 导入 Deployment 界面后由 CME 下发 · import in the Deployment UI, CME delivers it</span></div>`;
+  $("download").onclick = download;
+}
+
+async function download() {
+  const res = await fetch("api/export", { method: "POST", headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify(request()) });
+  if (!res.ok) { $("err").textContent = (await res.json()).detail; return; }
+  const name = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || "battery-strategy.csv";
+  const url = URL.createObjectURL(await res.blob());
+  const a = Object.assign(document.createElement("a"), { href: url, download: name });
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  state.exported = true; renderTrack();
+}
+
+function renderPolicy() {
+  const s = state.result.summary, b = state.result.battery;
+  $("policy").innerHTML =
+    `<div class="chips">充电 Charge: ${s.charge_windows.map((w) => `<span class="c">${w}</span>`).join("")}</div>` +
+    `<div class="chips">放电 Discharge: ${s.discharge_windows.map((w) => `<span class="d">${w}</span>`).join("")}</div>` +
+    `<div class="muted" style="margin-top:6px">SoC ${b.soc_min_pct}%–${b.soc_max_pct}% · ${b.capacity_kwh} kWh · Huawei 电源 only</div>` +
+    `<details><summary>A2A-T 节能意图 (复用，仅展示) · Energy-saving intent, display only</summary>` +
+    `<pre>${esc(JSON.stringify(state.result.intent.metadata, null, 2))}</pre></details>`;
+}
+
+function renderTrack() {
+  const r = state.result;
+  const steps = [
+    ["策略已生成 Strategy generated", r ? `${r.rules.filter((x) => x.action !== "hold").length} rules` : "—", !!r],
+    ["CSV 已导出 CSV exported", state.exported ? "Deployment template CSV downloaded" : "Use Export CSV above", state.exported],
+    ["Deployment 导入 Imported in Deployment", state.activated ? "Manual step (simulated)" : "Manual: log in to Deployment and import", state.activated],
+    ["CME 电源策略下发 CME power-strategy delivery", state.activated ? "Reused CME function (simulated)" : "Display only", state.activated],
+    ["站点生效 Active on sites", state.activated ? `${r.sites.length} sites (simulated)` : "—", state.activated],
+  ];
+  const firstOpen = steps.findIndex((s) => !s[2]);
+  $("track").innerHTML = steps.map(([t, d, done], i) =>
+    `<li class="${done ? "done" : i === firstOpen ? "wait" : ""}"><div class="t">${t}</div><div class="d">${esc(d)}</div></li>`).join("");
+}
+
+function renderSites() {
+  const r = state.result;
+  $("siteStatus").innerHTML = `<table style="margin-top:10px"><thead><tr><th>站点 Site</th><th>状态 Status</th></tr></thead><tbody>` +
+    r.sites.slice(0, 8).map((s) => `<tr><td>${esc(s)}</td><td>${state.activated ? '<span class="ok">已生效 Active</span> (sim.)' : "待下发 Pending"}</td></tr>`).join("") +
+    (r.sites.length > 8 ? `<tr><td colspan="2" class="muted">+ ${r.sites.length - 8} more</td></tr>` : "") + `</tbody></table>`;
+}
+
+function renderResults() {
+  const r = state.result, s = r.summary, f = r.fleet;
+  $("results").innerHTML = `<div class="kpis">` +
+    `<div class="kpi"><div class="v">${fmt(s.daily_saving)}</div><div class="l">每站日节省 CNY / site / day</div></div>` +
+    `<div class="kpi"><div class="v">${s.saving_pct}%</div><div class="l">电费下降 Cost reduction</div></div>` +
+    `<div class="kpi"><div class="v">${fmt(f.monthly_saving, 0)}</div><div class="l">全部站点月节省 CNY / month, ${r.sites.length} sites</div></div>` +
+    `<div class="kpi"><div class="v">${fmt(f.peak_kwh_shifted_daily, 1)}</div><div class="l">峰时转移电量 kWh / day moved off peak</div></div>` +
+    `</div><div class="muted" style="margin-top:8px">${state.activated ? "按策略模拟的预计成效 · Expected effect, simulated activation." : "预计值，激活后显示为生效 · Expected values; shown as active after activation."} 实测节电效果待设计 · Measured effect is TBD (phase 1).</div>`;
+}
+
+$("sample").onclick = loadSample;
+$("generate").onclick = generate;
+$("activate").onclick = () => { state.activated = true; renderTrack(); renderSites(); renderResults(); };
+$("file").onchange = async (e) => { const f = e.target.files[0]; if (f) $("tariff").value = await f.text(); };
+init();
+</script>
+</body>
+</html>

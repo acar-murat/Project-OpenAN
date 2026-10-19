@@ -1,0 +1,21 @@
+[
+  {
+    "issueId": "HA-XNLC-PY-20260908-09674481",
+    "cgi": "460-00-5267578-0",
+    "cellName": "XA-YL-XNLC-5G-0001",
+    "problemType": "NR_VINR_UL_PACKET_LOSS",
+    "problemDesc": "VINR上行高丢包",
+    "district": "西安",
+    "submitTime": "2026-09-08 14:30:00",
+    "diagnosed": true
+  },
+  {
+    "issueId": "HN-ZZ-JS-20261015-00031752",
+    "cgi": "460-00-617089-1103",
+    "cellName": "HN-ZZ-JSL-5G-0012",
+    "problemType": "UP_LOW_THROUGHPUT",
+    "problemDesc": "上行速率低",
+    "district": "郑州",
+    "submitTime": "2026-10-15 09:12:00"
+  }
+]
